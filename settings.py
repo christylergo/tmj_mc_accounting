@@ -19,9 +19,9 @@ INVENTORY_THRESHOLD = 20
 MAIN_NOTES_ONLY = True
 # ---------------------文件夹路径(填写在引号内)-------------------------
 # 网上导出数据文件夹路径
-DOCS_PATH = 'vip_docs'
+DOCS_PATH = 'mc_docs'
 # 代码文件夹路径
-CODE_PATH = 'tmj_vip_mc'
+CODE_PATH = 'tmj_mc_accounting'
 # 生成文件后保存路径
 FILE_GENERATED_PATH = ''
 # 库存显示方面的设置
@@ -73,10 +73,10 @@ if len(args) >= 3:
     if re.match(r'^-+\d+$', args[2]):
         VIP_SALES_INTERVAL = int(args[2].strip('-'))
         
-for value in FEATURE_PRIORITY.values():
+for value in list(FEATURE_PRIORITY.values()):
     value[0] *= 100
 
-for value in WAREHOUSE_PRIORITY.values():
+for value in list(WAREHOUSE_PRIORITY.values()):
     value[0] *= 10
     value[0] += FEATURE_PRIORITY['WAREHOUSE_PRIORITY'][0]
 

@@ -9,12 +9,11 @@ import queue
 import pandas as pd
 import threading
 import multiprocessing
-import warnings
 from pathlib import Path
 import sqlite3 as sqlite
-
 import settings as st
 import sqlite_init
+import cache_csv_init as csv
 
 
 class DocumentIO(threading.Thread):
@@ -27,6 +26,7 @@ class DocumentIO(threading.Thread):
     """
     # sql_mark标明两个文件是必须从sqldb中读取，一部分然后文件中读取合并在一起.
     # 其他文件都是根据更新时间选择读取来源
+    csv_path = csv.initialize_csv_cache(st.DOCS_PATH)
     sql_db = sqlite_init.sql_db
     files = None  # 需读取的文件信息, 包括identity, file_name, mtime等
     thread_num = 0  # 保存所需线程数, 用于和thread_counter进行比对
@@ -39,12 +39,9 @@ class DocumentIO(threading.Thread):
         cls.thread_counter += 1
 
     @classmethod
-    def get_files_list(cls, arg) -> None:
+    def get_files_list(cls) -> None:
         files = Path(st.DOCS_PATH)
         files_ins = list(files.glob('*'))
-        if arg and (os.path.dirname(st.FILE_GENERATED_PATH) != st.DOCS_PATH):
-            files = Path(os.path.dirname(st.FILE_GENERATED_PATH))
-            files_ins.extend(list(files.glob(os.path.basename(st.FILE_GENERATED_PATH))))
         files_list = []
         for file_dir in files_ins:
             if os.path.isdir(file_dir):
@@ -57,6 +54,7 @@ class DocumentIO(threading.Thread):
                     'file_name': str(file),
                     'base_name': os.path.basename(str(file)),
                     'file_mtime': file.stat().st_mtime,
+                    'file_size': file.stat().st_size,
                     'file_mtime_in_sqlite': None,
                     'read_doc': True,
                 }
@@ -64,8 +62,8 @@ class DocumentIO(threading.Thread):
         cls.files = files_list
 
     @classmethod
-    def check_files_list(cls, arg) -> list:
-        cls.get_files_list(arg)
+    def check_files_list(cls) -> list:
+        cls.get_files_list()
         files = str.join(',', [file['base_name'] for file in cls.files])
         for doc in st.DOC_REFERENCE:
             existence = re.search(doc['key_words'], files)
@@ -102,7 +100,7 @@ class DocumentIO(threading.Thread):
         cls.mutex.release()
         return cls.files
 
-    def __init__(self, doc_reference, arg):
+    def __init__(self, doc_reference):
         super().__init__()
         self.switch = False
         self.identity = doc_reference['identity']
@@ -112,7 +110,7 @@ class DocumentIO(threading.Thread):
         self.to_sql = False
         self.to_sql_df = None  # pandas.DataFrame if not None
         if self.files is None:  # 类属性
-            self.files = self.check_files_list(arg)
+            self.files = self.check_files_list()
         self.check_file()
 
     def check_file(self) -> None:
@@ -123,6 +121,9 @@ class DocumentIO(threading.Thread):
                 self.switch = True
                 # file name 是完整的带有路径的文件名, 可以用于读取, base name是不带路径的文件名
                 if file['read_doc'] is True:
+                    if re.match(r'^.+\.xlsx$', file['file_name']):
+                        if file['file_size'] > 2**20:
+                            file['file_name'] = csv.xlsx_to_csv(file['file_name'], self.csv_path)
                     file_name.append(file['file_name'])
                 read_doc = read_doc or file['read_doc']
         if not read_doc:
@@ -140,16 +141,25 @@ class DocumentIO(threading.Thread):
             x = self.doc_ref['val_pos'].copy()  # 避免list出现异常,需要使用copy方法
             pd_cols.extend(x)
             if matched_csv:
-                one_df = pd.read_csv(file, usecols=lambda col: col in pd_cols)
+                # xlsx转换成csv编码格式是gb2312, 读取时需要特别指定, pandas默认的是utf-8
+                encoding = 'gb2312' if re.match(r'^.+\\\d+\.\d+\.csv$', file) else 'utf-8'
+                one_df = pd.read_csv(file, usecols=lambda col: col in pd_cols, encoding=encoding)
                 doc_df = pd.concat([doc_df, one_df], ignore_index=True, axis=0)
             if matched_excel:
-                # 默认引擎是openpyxl,使用xlrd比openpyxl速度更快,但是必须是新版,pip install xlrd==1.2.0
-                # 把关于xlrd的warnings进行捕获, 避免大量的关于xlrd版本的warnings干扰正常提示
-                with warnings.catch_warnings(record=True):
-                    one_df = pd.read_excel(
-                        file, engine='xlrd', usecols=lambda col: col in pd_cols,
-                        dtype={x: str for x in self.doc_ref['key_pos']})  # 部分excel文件key_pos数据类型不是str, 强制转换
-                    doc_df = pd.concat([doc_df, one_df], ignore_index=True, axis=0)
+                # 在旧版本的pandas中, 默认引擎是openpyxl,使用xlrd比openpyxl速度更快,但是必须是新版,pip install xlrd==1.2.0
+                # 最新版的pandas使用openpyxl读取excel文件速度已经和接近, 且新版pandas已经不再兼容xlrd1.2.0, xlrd仅用于读取xls文件
+                d_type = {x: str for x in self.doc_ref['key_pos']}
+                with pd.ExcelFile(file) as xl:
+                    if len(xl.sheet_names) > 1:
+                        data = pd.read_excel(xl, list(xl.sheet_names), usecols=lambda col: col in pd_cols, dtype=d_type)
+                        df_li = []
+                        for ws in data:
+                            if re.search('\u65b0\u54c1', ws):
+                                df_li.append(data[ws])
+                        one_df = pd.concat(df_li, ignore_index=True, axis=0)
+                    else:
+                        one_df = pd.read_excel(xl, usecols=lambda col: col in pd_cols, dtype=d_type)
+                doc_df = pd.concat([doc_df, one_df], ignore_index=True, axis=0)
         doc_df = doc_df.dropna(subset=self.doc_ref['key_pos'], axis=0)  # 剔除空行, 很重要
         row_count = doc_df.index.size
         index = pd.MultiIndex.from_product([['doc_df'], range(row_count)], names=['source', 'serial_nu'])
@@ -268,12 +278,12 @@ class DocumentIO(threading.Thread):
 # ----------------------------------分隔线, 之后是功能函数---------------------------------------
 
 
-def reading_worker(process_queue=None, doc_refer=None, arg=False, /) -> None:
+def reading_worker(process_queue=None, doc_refer=None, /) -> None:
     if doc_refer is None:
         doc_refer = st.DOC_REFERENCE
     rds_ins = []
     for xx in doc_refer:
-        temp = DocumentIO(xx, arg)
+        temp = DocumentIO(xx)
         if temp.switch:
             rds_ins.append(temp)
             temp.start()
@@ -284,15 +294,14 @@ def reading_worker(process_queue=None, doc_refer=None, arg=False, /) -> None:
         process_queue.put(data_ins)
 
 
-def multiprocessing_reader(args) -> list:
+def multiprocessing_reader() -> list:
     """
     返回值是字典列表
     {'identity': identity, 'doc_ref': doc_reference, 'data_frame': dataframe, 'to_sql_df': dataframe, 'mode': substitute/merge/None}
     :return:
     """
     cpus = os.cpu_count()
-    arg = True if len(args) == 2 and re.match(r'^-+dpxl$', args[1]) else False
-    files_list = DocumentIO.check_files_list(arg)
+    files_list = DocumentIO.check_files_list()
     doc_reference = []
     sql_reference = []
     for doc in st.DOC_REFERENCE:
@@ -317,7 +326,7 @@ def multiprocessing_reader(args) -> list:
         queue_ins = multiprocessing.Manager().Queue()
         for i in range(len_doc // 2):  # 每2个文档读取需求开启一个进程
             doc_group = [doc_reference[i * 2], doc_reference[i * 2 + 1]]
-            pool.apply_async(reading_worker, (queue_ins, doc_group, arg))
+            pool.apply_async(reading_worker, (queue_ins, doc_group))
             # print(doc_group)
         doc_group = sql_reference  # 把需要从sqlite中读取的需求也加进最后一个进程
         if len_doc % 2 == 1:
@@ -327,7 +336,7 @@ def multiprocessing_reader(args) -> list:
         pool.join()
     else:
         queue_ins = queue.Queue()
-        reading_worker(queue_ins, None, arg)  # 将数据放入便于读取的queue中
+        reading_worker(queue_ins, None)  # 将数据放入便于读取的queue中
     data_ins_list = []
     while not queue_ins.empty():
         data_ins = queue_ins.get()

@@ -164,18 +164,18 @@ class MiddlewareArsenal:
                 data_frame[ggg] = np.nan
         data_frame = data_frame.fillna(999999)
         data_frame[data_ins['identity']] = data_frame[[available, inventory]].apply(np.min, axis=1)
-        data_ins['data_frame'] = data_frame[data_frame[criteria_col] != '是']
+        data_ins['data_frame'] = data_frame[data_frame[criteria_col] != '\u662F']  # '\u662F'是
 
 
 #  以字典构建dataframe处理函数集合, 后续直接用各个df的identity来调用,
 #  注意partial必须传递key argument的限制
 middleware_dict = MiddlewareArsenal.__dict__
 middleware_arsenal = {}
-for func_name, func in middleware_dict.items():
+for func_name in middleware_dict:
     if re.match(r'^(?=[^_])\w+(?<=[^_])$', func_name):  # 排除系统属性, 如果有大量的regular匹配需求, 最好先调用compile
-        middleware_arsenal[func_name] = functools.partial(func, self=None)
+        middleware_arsenal[func_name] = functools.partial(middleware_dict[func_name], self=None)
     if re.match(r'^(?=_[^_])\w*(?<=[^_]_)$', func_name):
-        warehouse_func = functools.partial(func, self=None)
+        warehouse_func = functools.partial(middleware_dict[func_name], self=None)
         stock_func_dict = {
             warehouse.lower() + '_stock': warehouse_func
             for warehouse in st.warehouses}
