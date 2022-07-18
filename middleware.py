@@ -661,6 +661,6 @@ for x in st.doc_stock_real_and_virtual:
     setattr(AssemblyLines.VipElementWiseStockInventory, x['identity'], None)
 # ----------------------------------------------------------
 assembly_lines = {}
-for attr_name, attr_value in AssemblyLines.__dict__.items():
+for attr_name in attr_dict := AssemblyLines.__dict__:
     if re.match(r'^(?=[^_])\w+(?<=[^_])$', attr_name):
-        assembly_lines.update({attr_name: attr_value})
+        assembly_lines.update({attr_name: attr_dict[attr_name]})
