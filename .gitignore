@@ -5,4 +5,5 @@
 *.ipynb
 *.xlsx
 *.db
+.vscode
 accounting_venv

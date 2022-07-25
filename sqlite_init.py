@@ -15,14 +15,15 @@ sql_create_tmj_files_info = '''
     file_mtime DATETIME NOT NULL);
 '''
 sql_create_table = [f"""
-    CREATE TABLE IF NOT EXISTS {d_rf['identity']}
+    CREATE TABLE IF NOT EXISTS {k}
     (ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    {str.join(',', [kp + ' TEXT NOT NULL' for kp in d_rf['key_pos']])},
-    {str.join(',', [vp + ' ' + vt for vp, vt in zip(d_rf['val_pos'], d_rf['val_type'])])});"""
-                    for d_rf in st.DOC_REFERENCE]
+    {str.join(',', [kp.split('|')[0] + ' TEXT NOT NULL' for kp in d_rf['key_pos']])},
+    {str.join(',', [vp.split('|')[0] + ' ' + vt for vp, vt in zip(d_rf['val_pos'], d_rf['val_type'])])});"""
+                    for k, d_rf in st.DOC_REFERENCE.items()]
 # sql_create_table = [re.sub(r'日期\s+TEXT', '日期 DATETIME', content) for content in sql_create_table]
-sql_create_index = [f"CREATE INDEX IF NOT EXISTS index_{d_rf['identity']} ON {d_rf['identity']}({d_rf['key_pos'][1]});"
-                    for d_rf in st.DOC_REFERENCE if d_rf['identity'] in ['mc_daily_sales', 'vip_daily_sales']]
+sql_create_index = [
+    f"CREATE INDEX IF NOT EXISTS index_{k} ON {k}('日期');"
+    for k, d_rf in st.DOC_REFERENCE.items() if '日期' in map(lambda x: x.split('|')[0], d_rf['key_pos'])]
 sql_create_table.extend(sql_create_index)
 sql_create_table.append(sql_create_tmj_files_info)
 table_list = [item['identity'] for item in st.DOC_REFERENCE]

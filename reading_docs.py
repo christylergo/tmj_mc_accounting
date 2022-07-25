@@ -64,7 +64,7 @@ class DocumentIO(threading.Thread):
     @classmethod
     def check_files_list(cls) -> list:
         cls.get_files_list()
-        files = str.join(',', [file['base_name'] for file in cls.files])
+        files = str.join(',', [file['file_name'] for file in cls.files])
         for doc in st.DOC_REFERENCE:
             existence = re.search(doc['key_words'], files)
             if existence is None:
@@ -76,7 +76,7 @@ class DocumentIO(threading.Thread):
                 else:
                     pass  # optional文件不存在时不需要提醒
             for file in cls.files:
-                matched = re.search(doc['key_words'], file['base_name'])
+                matched = re.search(doc['key_words'], file['file_name'])
                 if matched is not None:
                     file['identity'] = doc['identity']
                     cls.thread_num += 1
@@ -111,9 +111,9 @@ class DocumentIO(threading.Thread):
         self.to_sql_df = None  # pandas.DataFrame if not None
         if self.files is None:  # 类属性
             self.files = self.check_files_list()
-        self.check_file()
+        self.fit_file()
 
-    def check_file(self) -> None:
+    def fit_file(self) -> None:
         file_name = []
         read_doc = False
         for file in self.files:  # files是类属性,全部文件夹中的文件信息列表
@@ -122,7 +122,7 @@ class DocumentIO(threading.Thread):
                 # file name 是完整的带有路径的文件名, 可以用于读取, base name是不带路径的文件名
                 if file['read_doc'] is True:
                     if re.match(r'^.+\.xlsx$', file['file_name']):
-                        if file['file_size'] > 2**20:
+                        if file['file_size'] > st.XLSX_TO_CSV_THRESHOLD:
                             file['file_name'] = csv.xlsx_to_csv(file['file_name'], self.csv_path)
                     file_name.append(file['file_name'])
                 read_doc = read_doc or file['read_doc']
@@ -154,7 +154,7 @@ class DocumentIO(threading.Thread):
                         data = pd.read_excel(xl, list(xl.sheet_names), usecols=lambda col: col in pd_cols, dtype=d_type)
                         df_li = []
                         for ws in data:
-                            if re.search('\u65b0\u54c1', ws):
+                            if re.search(st.MULTI_SHEETS_SLICE, ws):
                                 df_li.append(data[ws])
                         one_df = pd.concat(df_li, ignore_index=True, axis=0)
                     else:
@@ -213,8 +213,8 @@ class DocumentIO(threading.Thread):
 
     def run(self) -> None:
         old_time = time.time()
-        tracing = f"reading_thread: {self.thread_counter} ({self.identity})is initialized! \r\n" + \
-                  f"mode: {self.from_sql}   start at: {time.ctime()} ^_^\r\n"
+        tracing = f"""reading_thread: {self.thread_counter} ({self.identity})is initialized! \r\n" + 
+            mode: {self.from_sql}   start at: {time.ctime()} ^_^\r\n"""
         if self.switch:
             old_time = time.time()
             data_frame = self.get_data()
@@ -304,14 +304,14 @@ def multiprocessing_reader() -> list:
     files_list = DocumentIO.check_files_list()
     doc_reference = []
     sql_reference = []
-    for doc in st.DOC_REFERENCE:
+    for doc, _ in st.DOC_REFERENCE.items():
         zzz = None
         kkk = None
         for x in files_list:
-            if x['identity'] == doc['identity']:
-                kkk = doc
+            if x['identity'] == doc:
+                kkk = {'identity': doc}.update(_)
                 if x['read_doc']:
-                    zzz = doc
+                    zzz = {'identity': doc}.update(_)
         if zzz is None:
             if kkk is not None:
                 sql_reference.append(kkk)

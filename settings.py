@@ -1,260 +1,224 @@
 # -*- coding: utf-8 -*-
+import io
 import os
 import sys
+import re
 import win32con
 import win32api
 import datetime
+from collections import namedtuple
+
 
 # 表格生成后是否打开, True表示'是',False表示'否'
 SHOW_DOC_AFTER_GENERATED = True
-# 唯品销量显示的天数,1~30
-VIP_SALES_INTERVAL = 8
-# 猫超销量的天数,1~30
-MC_SALES_INTERVAL = 5
-# 触发备注提示的周转天数阈值, 低于此值会备注提示
-DSI_THRESHOLD = 3
-# 触发备注提示的主仓库存阈值, 低于此值会备注提示
-INVENTORY_THRESHOLD = 20
-# 设置是否只显示主仓备注, 设置为False则显示全部仓备注
-MAIN_NOTES_ONLY = True
-# ---------------------文件夹路径(填写在引号内)-------------------------
+# 销售日期区间, 默认前30天
+MC_SALES_INTERVAL = 30
 # 网上导出数据文件夹路径
 DOCS_PATH = 'mc_docs'
 # 代码文件夹路径
 CODE_PATH = 'tmj_mc_accounting'
 # 生成文件后保存路径
 FILE_GENERATED_PATH = ''
-# 库存显示方面的设置
-warehouses = [
-    'HanChuan', 'Vip', 'LingDing', 'YueZhong', 'LinDa', 'PiFa', 'KunShan', 'adjustment'
-]
-# 下面这行列出来的是各个库存文件名称的关键字,用于识别是哪个仓的库存
-warehouses_key_name = ['汉川', '唯品', '岭顶|领顶', '越中', '琳达', '批发', '昆山', '修正']
+# 多sheets读取范围
+MULTI_SHEETS_SLICE = r'\u65b0\u54c1|\u5BC4\u552E|\u5546\u5BB6\u4ED3'
+# xlsx转csv文件size触发阈值
+XLSX_TO_CSV_THRESHOLD = 2**9
+# 给sys.stdout添加中间件, 使用utf8编解码, 替代windows系统中的GBK
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+# 寄售初算表头
+RDC_PRIMARY_PROFILE = [
+    '序号', '分类', '四级类目', '货品ID', '商品条码', '商品ID', 'SKUID', '商品名称', '单件成本', '供货价', '毛保', '运费',
+    '渠道推广服务费', '扣点', '销售额', '销量', '平均到手价', '单件毛利', '毛利', '毛利率', '到手价扣毛保', '结算价', '单件利润',
+    '平台利润', '单件毛保补差', '毛保补差', '初算利润', '初算利润率']
+# 商家仓初算表头
+SJC_PRIMARY_PROFILE = [
+    '序号', '分类', '四级类目', '货品ID', '商品条码', '商品ID', 'SKUID', '商品名称', '单件成本', '供货价', '毛保',
+    '扣点', '销售额', '销量', '平均到手价', '单件毛利', '毛利', '毛利率']
+# 寄售单品维度利润表
+RDC_ITEM_WISE_PROFIT = [
+    '序号', '分类', '四级类目', '商品ID', '商品名称', '单件成本', '供货价', '毛保', '运费', '扣点', '销售额', '销量', '平均到手价', 
+    '单件毛利', '毛利', '毛利率', '到手价扣毛保', '结算价', '单件利润', '直通车', '淘客', '猫超卡', '其他费用', '扣费后利润', '扣费后利润率']
+# 商家仓单品维度利润表
+SJC_ITEM_WISE_PROFIT = [
+    '序号', '分类', '四级类目', '商品ID', '商品名称', '单件成本', '供货价', '毛保', '运费', '扣点', '销售额', '销量', 
+    '平均到手价', '单件毛利', '毛利', '毛利率', '直通车', '淘客', '猫超卡', '其他费用', '扣费后利润', '扣费后利润率']
+# 类目汇总
+SUMMARY = [
+    '序号', '分组', '分类', '销售额', '初算利润', '初算利润率', '直通车', '淘客', '猫超卡', '其他费用', '扣费后利润', '扣费后利润率']
 
-# 各仓显示优先级,数字越小显示越靠前, True表示显示此列，False表示不显示
-WAREHOUSE_PRIORITY = {
-    'Vip': [1, True],  # 上虞唯品仓
-    'LingDing': [2, True],  # 岭顶仓
-    'YueZhong': [3, True],  # 越中小件仓
-    'HanChuan': [4, True],  # 汉川仓
-    'KunShan': [5, True],  # 昆山仓
-    'PiFa': [6, True],  # 五夫批发仓
-    'LinDa': [7, True],  # 琳达仓
-    'adjustment': [0, False],  # 库存修正，不需要显示，但是数据优先级最高
+"""
+列显示优先级数值越小越靠前, 默认True可见, False表示不显示, 列宽默认7, 默认数据类型float/General,
+默认不自动换行, 默认居中, 默认不加粗
+"""
+FEATURE_PROPERTY = {
+    'row_nu': {'priority': 0, 'name': '序号', 'visible': True, 'width': 5, 'data_type': int, 'floating_title': 'row_nu', },
+    # 分组, 寄售 | 商家仓
+    'group': {'priority': 1, 'name': '分组', 'data_type': str, 'floating_title': 'group', },
+    # 自主分类
+    'category': {'priority': 2, 'name': '分类', 'data_type': str, 'floating_title': '自主分类', },
+    # 四级类目
+    'fourth_level_category': {'priority': 3, 'name': '四级类目', 'width': 10, 'data_type': str, 'floating_title': '四级类目|类目名称', },
+    # 货品ID
+    'commodity_id': {'priority': 4, 'name': '货品ID', 'width': 15, 'data_type': str, 'floating_title': '货品id', },
+    # 条码
+    'barcode': {'priority': 5, 'name': '商品条码', 'width': 15, 'data_type': str, 'floating_title': '条码', },  
+    # 商品ID
+    'item_id': {'priority': 6, 'name': '商品ID', 'width': 15, 'data_type': str, 'floating_title': '商品id', },  
+    # skuID
+    'sku_id': {'priority': 7, 'name': 'SKUID', 'width': 15, 'data_type': str, 'floating_title': 'skuid', },  
+    # 商品名称
+    'item_name': {'priority': 8, 'name': '商品名称', 'width': 40, 'alignment': 'left', 'data_type': str, 'floating_title': '商品名称', },  
+    # 单件成本
+    'unit_cost': {'priority': 9, 'name': '单件成本', 'floating_title': 'unit_cost', },
+    # 供货价
+    'supply_price': {'priority': 10, 'name': '供货价', 'floating_title': '供货价', },
+    # 毛保
+    'guaranteed_profit_rate': {'priority': 11, 'name': '毛保', 'floating_title': '毛保', },
+    # 运费
+    'transportation_fee': {'priority': 12, 'name': '运费', 'floating_title': '运费', },
+    # 扣点
+    'profit_share': {'priority': 13, 'name': '扣点', 'floating_title': '扣点', },
+    # 销售额
+    'sales': {'priority': 14, 'name': '销售额', 'floating_title': '订单实付（退款后）|支付金额', },
+    # 销量
+    'sales_volume': {'priority': 15, 'name': '销量', 'data_type': int, 'floating_title': '净销售数量|支付件数', },
+    # 平均到手价
+    'mean_actual_price': {'priority': 16, 'name': '平均到手价', 'floating_title': 'mean_actual_price', },
+    # 单件毛利
+    'unit_goss_profit': {'priority': 17, 'name': '单件毛利', 'floating_title': 'unit_goss_profit', },
+    # 毛利
+    'gross_profit': {'priority': 18, 'name': '毛利', 'floating_title': 'gross_profit', },
+    # 毛利率
+    'profit_rate': {'priority': 19, 'name': '毛利率', 'floating_title': 'profit_rate', },
+    # 到手价扣毛保
+    'actual_price_share': {'priority': 20, 'name': '到手价扣毛保', 'floating_title': 'actual_price_share', },
+    # 结算价
+    'retained_price_share': {'priority': 21, 'name': '结算价', 'floating_title': 'retained_price_share', },
+    # 单件利润
+    'unit_profit': {'priority': 22, 'name': '单件利润', 'floating_title': 'unit_profit', },
+    # 平台利润
+    'unit_platform_profit': {'priority': 23, 'name': '平台利润', 'floating_title': 'unit_platform_profit', },
+    # 单件毛保差额
+    'unit_guaranteed_profit_variance': {'priority': 24, 'name': '单件毛保补差', 'floating_title': 'unit_guaranteed_profit_variance', },
+    # 毛保差额
+    'guaranteed_profit_variance': {'priority': 25, 'name': '毛保补差', 'floating_title': 'guaranteed_profit_variance', },
+    # 初算利润
+    'net_profit': {'priority': 26, 'name': '初算利润', 'floating_title': 'net_profit', },
+    # 初算利润率
+    'net_profit_rate': {'priority': 27, 'name': '初算利润率', 'floating_title': 'net_profit_rate', },
+    # 直通车
+    'zhi_tong_che': {'priority': 28, 'name': '直通车', 'floating_title': 'zhi_tong_che', },
+    # 淘客
+    'tao_ke': {'priority': 29, 'name': '淘客', 'floating_title': 'tao_ke', },  
+    # 猫超卡
+    'mao_chao_ka': {'priority': 30, 'name': '猫超卡', 'floating_title': 'mao_chao_ka', },
+    # 其他
+    'other_cost': {'priority': 31, 'name': '其他费用', 'floating_title': 'other_cost', },
+    # 扣费后利润
+    'retained_profit': {'priority': 32, 'name': '扣费后利润', 'bold': True, 'floating_title': 'retained_profit', },
+    # 扣费后利润率
+    'retained_profit_rate': {'priority': 33, 'name': '扣费后利润率', 'floating_title': 'retained_profit_rate', },
 }
 
-# 各属性显示优先级,数字越小显示越靠前, True表示显示此列，False表示不显示
-FEATURE_PRIORITY = {
-    'row_nu': [0, True],  # 序号
-    'platform': [1, True],  # 在售平台
-    'mc_agg_sales': [2, True],  # 猫超汇总销量
-    'status': [3, True],  # 上下架状态
-    'vip_barcode': [4, True],  # 唯品条码
-    'vip_commodity': [5, False],  # 唯品货号
-    'vip_item_name': [6, True],  # 商品名称
-    'tmj_barcode': [7, True],  # 旺店通货品条码明细
-    'vip_category': [8, False],  # 唯品分类
-    'agg_sales': [9, True],  # 汇总销量
-    'DSI': [10, True],  # 可用库存周转
-    'site_DSI': [11, True],  # 页面库存周转
-    'site_inventory': [12, True],  # 页面库存
-    'disassemble': [13, True],  # 组合分解为单品,在此列填写数量重新运行后会生成分解后的单品数量。
-    'WAREHOUSE_PRIORITY': [14, True],  # 仓组库存作为一个集合的优先级，一个或多个仓
-    'annotation': [15, True],  # 备注，包括缺货的货品信息，缺货情况下如果有可以替换的货品也会写在备注里
-    'cost': [16, True],  # 成本
-    'weight': [17, True],  # 重量
-    'site_link': [18, True],  # 网页链接
-    # 按天显示最近一周的销量,注意此处是字典生成式(iterable)
-    'DAILY_SALES_WEEK': [19, True],
-}
-args = sys.argv
-if len(args) >= 3:
-    import re
-    if re.match(r'^-+\d+$', args[2]):
-        VIP_SALES_INTERVAL = int(args[2].strip('-'))
-        
-for value in list(FEATURE_PRIORITY.values()):
-    value[0] *= 100
-
-for value in list(WAREHOUSE_PRIORITY.values()):
-    value[0] *= 10
-    value[0] += FEATURE_PRIORITY['WAREHOUSE_PRIORITY'][0]
-
-daily_sales_week_title = [
-    f'{datetime.date.today() - datetime.timedelta(days=i):%m/%d}' for i in range(VIP_SALES_INTERVAL, 0, -1)
-]
-
-daily_sales_week_priority = [
-    [FEATURE_PRIORITY['DAILY_SALES_WEEK'][0] + i,
-     FEATURE_PRIORITY['DAILY_SALES_WEEK'][1]]
-    for i in range(0, VIP_SALES_INTERVAL)
-]
-
-DAILY_SALES_WEEK = zip(daily_sales_week_title, daily_sales_week_priority)
-FEATURE_PRIORITY.update(DAILY_SALES_WEEK)
-
-WAREHOUSE_PRIORITY_REAL_VIRTUAL = ({
-    warehouses[i].lower() + '_stock_virtual': [
-        WAREHOUSE_PRIORITY[warehouses[i]][0] + 1, WAREHOUSE_PRIORITY[warehouses[i]][1]],
-    warehouses[i].lower() + '_stock': [
-        WAREHOUSE_PRIORITY[warehouses[i]][0] + 5, WAREHOUSE_PRIORITY[warehouses[i]][1]],
-} for i in range(0, len(warehouses))
-)
-
-for i in range(0, len(warehouses)):
-    FEATURE_PRIORITY.update(next(WAREHOUSE_PRIORITY_REAL_VIRTUAL))
-
-# 定义全部可能会用到的列,用生成式来定义特性一致的列，如库存列以及日销列
-# 默认列宽7, 默认居中， 默认data_type string
-COLUMN_PROPERTY = [
-    {'identity': 'row_nu', 'name': '序号',
-     'refer_doc': 'self', 'floating_title': 'index', 'width': 6},
-    {'identity': 'platform', 'name': '在售平台', 'refer_doc': 'arrAtom',
-     'floating_title': 'platform', 'width': 6},  # 1唯品，2猫超，3共用
-    {'identity': 'status', 'name': '在架状态',
-     'refer_doc': 'vip_routine_operation', 'floating_title': '尺码状态', 'alignment': 'right'},
-    {'identity': 'vip_barcode', 'name': '唯品条码', 'refer_doc': 'vip_fundamental_collections',
-     'floating_title': '唯品后台条码', 'width': 15},
-    {'identity': 'vip_commodity', 'name': '唯品货号', 'refer_doc': 'vip_fundamental_collections',
-     'floating_title': '唯品会货号', 'width': 15},
-    {'identity': 'vip_item_name', 'name': '商品名称', 'refer_doc': 'vip_fundamental_collections',
-     'floating_title': '商品名称', 'width': 40, 'alignment': 'left', 'wrap_text': True},
-    {'identity': 'tmj_barcode', 'name': '旺店通编码明细', 'refer_doc': 'arrAtom',
-     'floating_title': 'tmj_barcode', 'width': 19, 'alignment': 'left', 'wrap_text': True, 'bold': True},
-    {'identity': 'vip_category', 'name': '类别',
-     'refer_doc': 'vip_fundamental_collections', 'floating_title': '类别'},
-    {'identity': 'agg_sales', 'name': '合计销量',
-     'refer_doc': 'vip_daily_sales', 'floating_title': 'agg_sales', 'data_type': 'int'},
-    {'identity': 'mc_agg_sales', 'name': '猫超销量',
-     'refer_doc': 'mc_daily_sales', 'floating_title': 'mc_agg_sales', 'data_type': 'int'},
-    {'identity': 'site_DSI', 'name': '页面库存周转',
-     'refer_doc': 'self', 'floating_title': 'dss', 'data_type': 'int'},
-    {'identity': 'DSI', 'name': '可用库存周转',
-     'refer_doc': 'self', 'floating_title': 'dsi', 'data_type': 'int'},
-    {'identity': 'site_inventory', 'name': '页面库存余量',
-     'refer_doc': 'vip_routine_site_stock', 'floating_title': '可扣库存', 'data_type': 'int'},
-    {'identity': 'disassemble', 'name': '需求',
-     'refer_doc': 'vip_summary', 'floating_title': 'disassemble', 'data_type': 'int', 'bold': True},
-    {'identity': 'cost', 'name': '成本',
-     'refer_doc': 'tmj_atom', 'floating_title': '会员价', 'data_type': 'float'},
-    {'identity': 'weight', 'name': '重量',
-     'refer_doc': 'tmj_atom', 'floating_title': '重量', 'data_type': 'float'},
-    {'identity': 'annotation', 'name': '备注', 'refer_doc': 'arrAtom',
-     'floating_title': 'notes', 'width': 15, 'alignment': 'left', 'wrap_text': False},
-    {'identity': 'site_link', 'name': '商品链接',
-     'refer_doc': 'vip_daily_sales', 'floating_title': '商品链接', 'width': 10, 'alignment': 'left'},
-]
-
-vip_daily_sales_columns = [{
-    'identity': daily_sales_week_title[i], 'name': daily_sales_week_title[i],
-    'refer_doc': 'vip_daily_sales', 'floating_title': daily_sales_week_title[i], 'data_type': 'int',
-    'freeze_panes': True
-} for i in range(0, VIP_SALES_INTERVAL)]
-
-warehouses_stock = [{
-    'identity': warehouses[i].lower() + '_stock', 'name': warehouses_key_name[i].split('|')[0] + '仓库存',
-    'refer_doc': warehouses[i].lower() + '_stock', 'floating_title': warehouses[i].lower() + '_stock',
-    'data_type': 'int'
-} for i in range(0, len(warehouses))
-]
-
-warehouses_stock_virtual = [{
-    'identity': warehouses[i].lower() + '_stock_virtual', 'name': warehouses_key_name[i].split('|')[0] + '虚拟仓库存',
-    'refer_doc': warehouses[i].lower() + '_stock_virtual', 'floating_title': warehouses[i].lower() + '_stock_virtual',
-    'data_type': 'int'
-} for i in range(0, len(warehouses))
-]
-
-COLUMN_PROPERTY.extend(warehouses_stock)
-COLUMN_PROPERTY.extend(warehouses_stock_virtual)
-COLUMN_PROPERTY.extend(vip_daily_sales_columns)
-
-doc_stock = [{
-    'identity': warehouses[i].lower() + '_stock', 'name': warehouses_key_name[i] + '仓',
-    'key_words': '|'.join([xx .join(['^[^虚拟]*.*', '[^虚拟]*仓库存.*$']) for xx in warehouses_key_name[i].split('|')]),
-    'key_pos': ['商家编码', ],
-    'val_pos': ['残次品', '可发库存', '可用库存'],
-    'val_type': ['TEXT', 'INT', 'INT'],
-    'importance': 'optional', 'mode': None,
-} for i in range(0, len(warehouses))
-]
-
-doc_stock_virtual = [{
-    'identity': warehouses[i].lower() + '_stock_virtual', 'name': warehouses_key_name[i] + '虚拟仓',
-    'key_words': '|'.join(['.*虚拟|虚拟.*'.join([xx, xx]) for xx in warehouses_key_name[i].split('|')]),
-    'key_pos': ['商家编码', ], 'val_pos': ['残次品', '可发库存', '可用库存'],
-    'val_type': ['TEXT', 'INT', 'INT'],
-    'importance': 'optional', 'mode': None,
-} for i in range(0, len(warehouses))
-]
-doc_stock_real_and_virtual = []
-doc_stock_real_and_virtual.extend(doc_stock)
-doc_stock_real_and_virtual.extend(doc_stock_virtual)
-
-# 文件重要性的程度分为三类,'required'是必须的,'caution'是不必须,缺少的情况下会提示,'optional'是可选
-DOC_REFERENCE = [
-    {
-        'identity': 'vip_routine_site_stock', 'name': '',  # 页面库存文件
-        'key_words': '常态可扣减', 'key_pos': ['条码', ], 'val_pos': ['可扣库存', ], 'val_type': ['INT', ],
-        'importance': 'caution', 'mode': None,
+"""
+文件重要性的程度分为三类,'required'是必须的,'caution'是不必须,缺少的情况下会提示,'optional'是可选
+竖线后面的是表头实际名称
+""" 
+DOC_REFERENCE = {
+    'tmj_atom': {
+        'key_words': '单品明细', 'key_pos': ['商家编码', ],
+        'val_pos': ['会员价', '重量'], 'val_type': ['REAL', 'REAL'], 'importance': 'required',
     },
-    {
-        'identity': 'vip_routine_operation', 'name': '',  # 上下架状态文件
-        'key_words': '常态商品运营', 'key_pos': ['条码', ], 'val_pos': ['尺码状态', ], 'val_type': ['TEXT', ],
-        'importance': 'caution', 'mode': None,
-    },
-    {
-        'identity': 'vip_daily_sales', 'name': '',  # 日销量、商品链接
-        'key_words': '条码粒度', 'key_pos': ['条码', '日期', ], 'val_pos': ['销售量', '商品链接', ],
-        'val_type': ['INT', 'TEXT', ],
-        'importance': 'caution', 'mode': 'merge',
-    },
-    {
-        'identity': 'vip_fundamental_collections', 'name': '',  # 唯品总货表
-        'key_words': '唯品会十月总货表', 'key_pos': ['唯品后台条码', '旺店通条码', ],
-        'val_pos': ['类别', '商品名称', '唯品会货号', '日常券', '自主分类'], 'val_type': ['TEXT', 'TEXT', 'TEXT', 'TEXT', 'TEXT'],
-        'importance': 'required', 'mode': None,
-    },
-    {
-        'identity': 'tmj_atom', 'name': '',  # 单品信息表，包含名称、货号、成本、重量等信息
-        'key_words': '单品列表', 'key_pos': ['商家编码'], 'val_pos': ['货品编号', '货品名称', '规格名称', '会员价', '重量'],
-        'val_type': ['TEXT', 'TEXT', 'TEXT', 'REAL', 'REAL'],
-        'importance': 'required', 'mode': None,
-    },
-    {
-        'identity': 'tmj_combination', 'name': '',  # 组合表
+    'tmj_combination': {
         'key_words': '组合装明细', 'key_pos': ['商家编码', ], 'val_pos': ['单品名称', '单品货品编号', '单品商家编码', '数量'],
         'val_type': ['TEXT', 'TEXT', 'TEXT', 'INT'],
-        'importance': 'required', 'mode': None,
     },
-    {
-        'identity': 'mc_item', 'name': '',
-        'key_words': 'export-', 'key_pos': ['货品编码', '条码'], 'val_pos': ['采购负责人', '上下架状态'], 'val_type': ['TEXT', 'TEXT'],
-        'importance': 'caution', 'mode': None,
+    # 淘客导出的表格名称和商品列表名称相似, 因此要排除
+    'mc_item': {
+        'key_words':  r'^((?!淘客).)*export-((?!淘客).)*$', 'key_pos': ['货品ID|货品编码', '条码', '商品ID|商品编码', 'SKUID|sku编码'],
+        'val_pos': ['自营类目id', '自营类目名称', '建档供应商编码'], 'val_type': ['TEXT', 'TEXT', 'TEXT'],
     },
-    {
-        'identity': 'mc_daily_sales', 'name': '',
-        'key_words': '业务库存出入库流水', 'key_pos': ['货品ID', '出入库时间', '业务类型'], 'val_pos': ['库存变动'], 'val_type': ['INT'],
-        'importance': 'caution', 'mode': 'merge',
+    'sjc_new_item': {
+        'key_words':  '商家仓新品表格', 'key_pos': ['商品ID|商品编码', 'SKUID|SKU编码', ],
+        'val_pos': ['供货价', ], 'val_type': ['REAL', ], 'sheet_criteria': ['新品', '湿巾洗衣']
     },
-    {
-        'identity': 'vip_bench_player', 'name': '',
-        'key_words': '替换|替代|备选', 'key_pos': ['商家编码_首发', ],
-        'val_pos': ['商家编码_备选', '交换比'], 'val_type': ['TEXT', 'REAL', ],  # 交换比是指一个替代品可以替换多少个首发商品
-        'importance': 'optional', 'mode': None,
+    'mc_category': {
+        'key_words':  '猫超类目扣点', 'key_pos': ['自营四级类目ID',	'四级类目名称', ],
+        'val_pos': ['扣点',	'毛保',	'运费',	'渠道推广服务费', '自主分类', ],
+        'val_type': ['REAL', 'REAL', 'REAL', 'REAL', 'TEXT', ], 'sheet_criteria': ['寄售', '商家仓']
     },
-    {
-        'identity': 'vip_summary', 'name': '',  # 生成的统计最终表,当需要分解组合的时候读取.
-        'key_words': 'path_via_pandas', 'key_pos': ['唯品条码'], 'val_pos': ['需求'], 'val_type': ['INT'],
-        'importance': 'optional', 'mode': None,
+    'daily_sales': {
+        'key_words':  '销售日报', 'key_pos': ['日期|统计日期', '商品id', 'SKUID', '货品id', '业务类型', ],
+        'val_pos': ['四级类目名称', '净销售数量', r'净销售额|订单实付（退款后）', ], 
+        'val_type': ['TEXT', 'REAL', 'REAL', ],
     },
-]
+    'tian_ji_sales': {
+        'key_words':  r'天机.*商品信息|商品信息.*天机',
+        'key_pos': ['日期', '商品id', 'SKUID|SKU_ID', '货品id', '业务类型', '类目名称', ],
 
-DOC_REFERENCE.extend(doc_stock)
-DOC_REFERENCE.extend(doc_stock_virtual)
+        'val_pos': ['支付件数', '支付金额', ], 'val_type': ['REAL', 'REAL', ],
+    },
+    'mao_chao_ka': {
+        'key_words':  '猫超买返卡|猫超卡', 'key_pos': ['日期|业务时间', '商品id', '货品id', '业务类型', ],
+        'val_pos': ['销售数量', '供应商承担补差金额', ], 'val_type': ['REAL', 'REAL', ],
+    },
+    'tao_ke': {
+        'key_words':  '淘客', 'key_pos': ['日期|数据时间', '商品id', ],
+        'val_pos': ['结算佣金', '付款服务费', ], 'val_type': ['REAL', 'REAL', ],
+    },
+    'wan_xiang_tai': {
+        'key_words':  '万向台|货品加速', 'key_pos': ['日期', '商品ID|宝贝Id', ],
+        'val_pos': ['消耗', ], 'val_type': ['REAL', ],  
+    },
+    'yin_li_mo_fang': {
+        'key_words':  r'引力魔方|报表数据_15天归因\d+\.xlsx?$', 'key_pos': ['日期', '商品id', ],
+        'val_pos': ['消耗', ], 'val_type': ['REAL', ],  
+    },
+    'zhi_tong_che': {
+        'key_words':  r'直通车|.*_单元\.csv$', 'key_pos': ['日期', '商品id', ],
+        'val_pos': ['花费', ], 'val_type': ['REAL', ],  
+    },
+}
+# 重构配置项
+for doc in DOC_REFERENCE:
+    dvalue = DOC_REFERENCE[doc]
+    t = []
+    for val in dvalue['key_pos']:
+        t.extend(val.split('|'))
+    dvalue['key_pos'] = t
+    # ----------------------------------------------
+    t = []
+    for val in zip(dvalue['val_pos'], dvalue['val_type']):
+        i, j = val
+        t.extend(zip(i.split('|'), [j]*len(i)))
+    dvalue['val_pos'] = []
+    dvalue['val_type'] = []
+    for i, j in t:
+        dvalue['val_pos'].append(i)
+        dvalue['val_type'].append(j)
 
-print('settings->tracing...')
-
+args = sys.argv
+today = datetime.date.today()
+tt = today.timetuple()
+interval = namedtuple('interval', ('head', 'tail'))
+if len(args) == 1:
+    head = today - datetime.timedelta(days=MC_SALES_INTERVAL)
+    tail = today - datetime.timedelta(days=1)
+    MC_SALES_INTERVAL = interval(head, tail)
+elif len(args) == 2 and re.match(r'^-+LM$', args[1], re.IGNORECASE):
+    tail = datetime.date(tt.tm_year, tt.tm_mon, 1) - datetime.timedelta(days=1)
+    head = datetime.date(tt.tm_year, tail.timetuple().tm_mon, 1)
+    MC_SALES_INTERVAL = interval(head, tail)
+elif len(args) == 4 and re.match(r'^-+i(_\d\d?\.\d\d?){2}$', str.join('_', args[1:]), re.I):
+    try:
+        head = datetime.date(tt.tm_year, args[2].split('.')[0], args[2].split('.')[1])
+        tail = datetime.date(tt.tm_year, args[3].split('.')[0], args[3].split('.')[1])
+    except:
+        raise ValueError('------日期数值错误！------')
+    if head > tail:
+            raise ValueError('------日期开始大于结束！------')
+else:
+    raise ValueError('------参数格式错误！------')
 
 # 获取桌面路径
 def get_desktop() -> str:
@@ -263,11 +227,12 @@ def get_desktop() -> str:
         win32con.KEY_READ)
     return win32api.RegQueryValueEx(desktop_key, 'Desktop')[0]
 
+
 desktop = get_desktop()
 DOCS_PATH = os.path.join(desktop, DOCS_PATH)
 # 代码文件夹路径
 CODE_PATH = os.path.join(desktop, CODE_PATH)
 # 生成表格路径
-FILE_GENERATED_PATH = os.path.join(desktop, 'path_via_pandas.xlsx')
+FILE_GENERATED_PATH = os.path.join(desktop, 'path_to_pandas.xlsx')
 # sys.path.append(CODE_PATH)
-
+print('settings->tracing...')
