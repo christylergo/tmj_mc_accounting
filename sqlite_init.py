@@ -26,7 +26,7 @@ sql_create_index = [
     for k, d_rf in st.DOC_REFERENCE.items() if '日期' in map(lambda x: x.split('|')[0], d_rf['key_pos'])]
 sql_create_table.extend(sql_create_index)
 sql_create_table.append(sql_create_tmj_files_info)
-table_list = [item['identity'] for item in st.DOC_REFERENCE]
+table_list = [i for i in st.DOC_REFERENCE]
 table_list.append('tmj_files_info')
 
 conn = sqlite3.connect(sql_db)
@@ -35,8 +35,8 @@ for create_table in sql_create_table:
     cur.execute(create_table)
 
 # 手工处理的query写在此处
-# cur.execute('drop table vip_summary;')
-# cur = cur.execute("select * from vip_routine_site_stock where id<'10';")
+# cur.execute('drop table mc_item;')
+# cur = cur.execute("select * from tian_ji_sales;")
 # for i in cur:
 #     print(i)
 

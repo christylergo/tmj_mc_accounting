@@ -7,12 +7,12 @@ from win32com import client
 from pathlib import Path
 
 
-def initialize_csv_cache(docs_path):
+def initialize_csv_cache(csv_path):
     """
     返回值是csv cache文件夹路径, 如果不存在则创建, 并设置成隐藏文件夹.
     同时检查文件夹的全部文件合计size, 如果大于设定值, 则清空文件夹.
     """
-    cache_path = os.path.join(docs_path, 'cached_csv')
+    cache_path = csv_path
     p = Path(cache_path)
     if not p.exists():
         p.mkdir()
@@ -27,27 +27,31 @@ def initialize_csv_cache(docs_path):
         for f in li:
             f.unlink()
     # print('tracing--->>>')
-    return cache_path
 
 
-def xlsx_to_csv(file_name, csv_path) -> str:
+def xlsx_to_csv(file_name: list, csv_path) -> str:
     """
     open the xlsx file with win32 api,
     then convert the file into csv
     return the converted csv file's path
     """
-    repl = str(time.time()) + '.csv'
-    csv_file = os.path.join(csv_path, repl)
     excel = client.Dispatch('Excel.Application')
     excel.Visible = False
-    wb = excel.Workbooks.Open(file_name)
-    if wb.Sheets.Count > 1:
+    csv_file = []
+    for f in file_name:
+        repl = str(id(f)) + '.csv'
+        csv_f = os.path.join(csv_path, repl)
+        wb = excel.Workbooks.Open(f)
+        if wb.Sheets.Count > 1:
+            excel.DisplayAlerts = False
+            wb.Close()
+            excel.DisplayAlerts = True
+            csv_file.append(f)
+            continue
+        wb.SaveAs(csv_f, FileFormat=6)
+        excel.DisplayAlerts = False
         wb.Close()
-        excel.Quit()
-        return file_name
-    wb.SaveAs(csv_file, FileFormat=6)
-    excel.DisplayAlerts = False
-    wb.Close()
-    excel.DisplayAlerts = True
+        excel.DisplayAlerts = True
+        csv_file.append(csv_f)
     excel.Quit()
     return csv_file

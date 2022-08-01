@@ -10,29 +10,31 @@ import pandas as pd
 import threading
 import multiprocessing
 from pathlib import Path
+from collections import namedtuple
+from typing import NamedTuple
 import sqlite3 as sqlite
 import settings as st
 import sqlite_init
 import cache_csv_init as csv
 
 
-class DocumentIO(threading.Thread):
+class DocumentIO:
     """
-    基于多线程读取写入文件,判断文件来源.
-    实例化此类实现多线程,一个分类文件开启一个线程读取, 放入队列中的数据结构在实例方法run中定义.
+    基于多进程读取写入文件,判断文件来源.
     如果主要是读取sqlite则不开启多进程, 如果有较多的文件要读取, 则每2类文件开启一个进程去读取, 多核处理器提速很明显.
     数据库sqlite不支持多线程, 且conn不能存在于多线程中，必须使用mutex进行保护.
     轻量化的application使用sqlite速度已经足够快, mysql显然功能更好, 但是需要单独安装配置数据库.
     """
     # sql_mark标明两个文件是必须从sqldb中读取，一部分然后文件中读取合并在一起.
     # 其他文件都是根据更新时间选择读取来源
-    csv_path = csv.initialize_csv_cache(st.DOCS_PATH)
+    csv_path = os.path.join(st.DOCS_PATH, 'cached_csv')
     sql_db = sqlite_init.sql_db
     files = None  # 需读取的文件信息, 包括identity, file_name, mtime等
     thread_num = 0  # 保存所需线程数, 用于和thread_counter进行比对
     thread_counter = 0  # 统计开启的线程数, 全部读取之后关闭conn
     queue = queue.Queue()
     mutex = threading.Lock()
+    doc_ref = namedtuple('doc_ref', ('identity', 'ref'))
 
     @classmethod
     def count_threads(cls):
@@ -63,22 +65,20 @@ class DocumentIO(threading.Thread):
 
     @classmethod
     def check_files_list(cls) -> list:
+        # print('running...')
+        csv.initialize_csv_cache(cls.csv_path)
         cls.get_files_list()
         files = str.join(',', [file['file_name'] for file in cls.files])
-        for doc in st.DOC_REFERENCE:
-            existence = re.search(doc['key_words'], files)
+        for doc, _ in st.DOC_REFERENCE.items():
+            existence = re.search(_['key_words'], files)
             if existence is None:
-                if doc['importance'] == 'required':
-                    print(f"缺少必需重要数据表格: {doc['name']}\n")
+                if _.get('importance') == 'required':
+                    print(f"缺少必需重要数据表格: {_['name']}\n")
                     sys.exit()
-                elif doc['importance'] == 'caution':
-                    print(f"缺少数据表格: {doc['identity']}\n")
-                else:
-                    pass  # optional文件不存在时不需要提醒
             for file in cls.files:
-                matched = re.search(doc['key_words'], file['file_name'])
+                matched = re.search(_['key_words'], file['file_name'])
                 if matched is not None:
-                    file['identity'] = doc['identity']
+                    file['identity'] = doc
                     cls.thread_num += 1
         cls.mutex.acquire()
         # sqlite是单线程,不能线程共用一个conn  # 直接引用类属性中的conn, 不用反复开启连接, 方便适应sqlite连接的单线程特点
@@ -94,38 +94,49 @@ class DocumentIO(threading.Thread):
                     file['file_mtime_in_sqlite'] = row[2]
                     if file['file_mtime'] == row[2]:
                         file['read_doc'] = False
-                    # print('修改了')
+        # for file in cls.files:
+        #     if re.match(r'^.+\.xlsx$', file['file_name']) and file['read_doc']:
+        #         if file['identity'] and file['file_size'] > st.XLSX_TO_CSV_THRESHOLD:
+        #             file['file_name'] = csv.xlsx_to_csv(file['file_name'], cls.csv_path)
+
         cursor.close()
         conn.close()
         cls.mutex.release()
         return cls.files
 
-    def __init__(self, doc_reference):
+    def __init__(self, doc, files=None):
         super().__init__()
+        # doc参数由于namedtuple不支持多进程多线程, 改用普通tuple
         self.switch = False
-        self.identity = doc_reference['identity']
-        self.doc_ref = doc_reference
+        self.identity = doc.identity
+        self.doc_ref = doc.ref
         self.file = None  # 准备读取的文件名称列表
-        self.from_sql = doc_reference['mode']
+        self.from_sql = doc.ref.get('mode', None)
         self.to_sql = False
         self.to_sql_df = None  # pandas.DataFrame if not None
         if self.files is None:  # 类属性
-            self.files = self.check_files_list()
+            if files:
+                self.files = files
+            else:
+                self.files = self.check_files_list()
         self.fit_file()
 
     def fit_file(self) -> None:
         file_name = []
         read_doc = False
+        xlsx_file = []
         for file in self.files:  # files是类属性,全部文件夹中的文件信息列表
             if file['identity'] == self.identity:
                 self.switch = True
                 # file name 是完整的带有路径的文件名, 可以用于读取, base name是不带路径的文件名
                 if file['read_doc'] is True:
-                    if re.match(r'^.+\.xlsx$', file['file_name']):
-                        if file['file_size'] > st.XLSX_TO_CSV_THRESHOLD:
-                            file['file_name'] = csv.xlsx_to_csv(file['file_name'], self.csv_path)
-                    file_name.append(file['file_name'])
+                    if re.match(r'^.+\.xlsx$', file['file_name']) and file['file_size'] > st.XLSX_TO_CSV_THRESHOLD:
+                        xlsx_file.append(file['file_name'])
+                    else:
+                        file_name.append(file['file_name'])
                 read_doc = read_doc or file['read_doc']
+        if len(xlsx_file):
+            file_name.extend(csv.xlsx_to_csv(xlsx_file, self.csv_path))
         if not read_doc:
             self.from_sql = 'substitute'  # 是否从sqlite读取的最终依据是文件是否更新过
         if self.switch:
@@ -134,15 +145,16 @@ class DocumentIO(threading.Thread):
 
     def read_doc(self) -> pd.DataFrame():
         doc_df = pd.DataFrame()
+        doc_cols = self.doc_ref['key_pos'].copy()  # 直接引用后使用extend方法导致一系列问题,需要使用copy方法
+        doc_cols.extend(self.doc_ref['val_pos'])
+        pd_cols = list(map(lambda i: i.split('|')[-1], doc_cols))
+        sqlite_cols = list(map(lambda i: i.split('|')[0], doc_cols))
         for file in self.file:  # file是实例属性,将要读取的文件信息,也是列表,因为同一性质文件可能有多个
             matched_csv = re.match(r'^.*\.csv$', file)
             matched_excel = re.match(r'^.*\.xlsx?$', file)
-            pd_cols = self.doc_ref['key_pos'].copy()  # 直接引用后使用extend方法导致一系列问题
-            x = self.doc_ref['val_pos'].copy()  # 避免list出现异常,需要使用copy方法
-            pd_cols.extend(x)
             if matched_csv:
                 # xlsx转换成csv编码格式是gb2312, 读取时需要特别指定, pandas默认的是utf-8
-                encoding = 'gb2312' if re.match(r'^.+\\\d+\.\d+\.csv$', file) else 'utf-8'
+                encoding = 'gb2312' if re.match(r'^.+\\\d+\.csv$', file) else 'utf-8'
                 one_df = pd.read_csv(file, usecols=lambda col: col in pd_cols, encoding=encoding)
                 doc_df = pd.concat([doc_df, one_df], ignore_index=True, axis=0)
             if matched_excel:
@@ -154,13 +166,14 @@ class DocumentIO(threading.Thread):
                         data = pd.read_excel(xl, list(xl.sheet_names), usecols=lambda col: col in pd_cols, dtype=d_type)
                         df_li = []
                         for ws in data:
-                            if re.search(st.MULTI_SHEETS_SLICE, ws):
+                            if re.search(self.doc_ref['sheet_criteria'], ws):
                                 df_li.append(data[ws])
                         one_df = pd.concat(df_li, ignore_index=True, axis=0)
                     else:
                         one_df = pd.read_excel(xl, usecols=lambda col: col in pd_cols, dtype=d_type)
                 doc_df = pd.concat([doc_df, one_df], ignore_index=True, axis=0)
-        doc_df = doc_df.dropna(subset=self.doc_ref['key_pos'], axis=0)  # 剔除空行, 很重要
+        doc_df = doc_df.dropna(how='all', axis=0)  # 剔除空行
+        doc_df = doc_df.rename(columns=dict(zip(pd_cols, sqlite_cols)))
         row_count = doc_df.index.size
         index = pd.MultiIndex.from_product([['doc_df'], range(row_count)], names=['source', 'serial_nu'])
         doc_df.index = index
@@ -168,15 +181,13 @@ class DocumentIO(threading.Thread):
 
     def read_sqlite(self) -> pd.DataFrame():
         pd_cols = self.doc_ref['key_pos'].copy()  # 直接引用后使用extend方法导致一系列问题
-        x = self.doc_ref['val_pos'].copy()  # 避免list出现异常,需要使用copy方法
-        pd_cols.extend(x)
+        pd_cols.extend(self.doc_ref['val_pos'])
+        pd_cols = list(map(lambda i: i.split('|')[0], pd_cols))
         sql_constraint = ''
-        if self.identity in ['vip_daily_sales', 'mc_daily_sales']:
-            interval = {'vip_daily_sales': st.VIP_SALES_INTERVAL,
-                        'mc_daily_sales': st.MC_SALES_INTERVAL}
-            sales_date_head = datetime.date.today() - datetime.timedelta(days=interval[self.identity])
+        if self.doc_ref.get('mode') is not None:
+            interval: NamedTuple = st.MC_SALES_INTERVAL
             # vip和mc日销文件的date列名不同
-            sql_constraint = f" WHERE {self.doc_ref['key_pos'][1]} >= '{sales_date_head}';"
+            sql_constraint = f" WHERE {pd_cols[0]} BETWEEN '{interval.head}' AND '{interval.tail}';"
         self.mutex.acquire()
         conn = sqlite.connect(self.sql_db)
         # sqlite是单线程,不能线程共用一个conn
@@ -213,10 +224,9 @@ class DocumentIO(threading.Thread):
 
     def run(self) -> None:
         old_time = time.time()
-        tracing = f"""reading_thread: {self.thread_counter} ({self.identity})is initialized! \r\n" + 
-            mode: {self.from_sql}   start at: {time.ctime()} ^_^\r\n"""
+        tracing = f"reading_thread: {self.thread_counter} ({self.identity})is initialized!\n"
+        tracing = tracing + f"mode: {self.from_sql}   start at: {time.ctime()} ^_^\r\n"
         if self.switch:
-            old_time = time.time()
             data_frame = self.get_data()
             # print('get_data耗时: ', time.time()-old_time)
             sql_df = self.to_sql_df
@@ -257,14 +267,14 @@ class DocumentIO(threading.Thread):
                     to_sql['to_sql_df'].to_sql(
                         to_sql['identity'], conn, if_exists='append', index=False, chunksize=1000)
                 print(f"{to_sql['identity']} have written data to sqlite ...")
-            # 写入sqlite的文件更新信息, 避免出现线程执行失败, 但是文件信息却更新了的情况
-            for file in cls.files:
-                if file['identity'] == to_sql['identity']:
-                    query_data.append(
-                        (file['identity'], file['base_name'], file['file_mtime']))
-                    # 把最新的文件信息写进sqlite中,用于下一次比对,旧信息全部删除.
-                    cursor.execute(
-                        f"DELETE FROM tmj_files_info WHERE identity = '{file['identity']}';")
+                # 写入sqlite的文件更新信息, 避免出现线程执行失败, 但是文件信息却更新了的情况
+                for file in cls.files:
+                    if file['identity'] == to_sql['identity']:
+                        query_data.append(
+                            (file['identity'], file['base_name'], file['file_mtime']))
+                        # 把最新的文件信息写进sqlite中,用于下一次比对,旧信息全部删除.
+                        cursor.execute(
+                            f"DELETE FROM tmj_files_info WHERE identity = '{file['identity']}';")
 
         #  --------------------------------
         # base name 是不带路径的文件名
@@ -277,18 +287,18 @@ class DocumentIO(threading.Thread):
 
 # ----------------------------------分隔线, 之后是功能函数---------------------------------------
 
+doc_ref = namedtuple('doc_ref', ('identity', 'ref'))
 
-def reading_worker(process_queue=None, doc_refer=None, /) -> None:
+
+def reading_worker(process_queue=None, doc_refer=None, files=None, /) -> None:
     if doc_refer is None:
-        doc_refer = st.DOC_REFERENCE
-    rds_ins = []
-    for xx in doc_refer:
-        temp = DocumentIO(xx)
+        doc_refer = [doc_ref(i, j) for i, j in st.DOC_REFERENCE.items()]
+    for d in doc_refer:
+        temp = DocumentIO(d, files)
         if temp.switch:
-            rds_ins.append(temp)
-            temp.start()
-    for ins in rds_ins:
-        ins.join()
+            temp.run()
+        else:
+            print(d.identity, '没有文件')
     while not DocumentIO.queue.empty():
         data_ins = DocumentIO.queue.get()
         process_queue.put(data_ins)
@@ -304,14 +314,15 @@ def multiprocessing_reader() -> list:
     files_list = DocumentIO.check_files_list()
     doc_reference = []
     sql_reference = []
+
     for doc, _ in st.DOC_REFERENCE.items():
         zzz = None
         kkk = None
         for x in files_list:
             if x['identity'] == doc:
-                kkk = {'identity': doc}.update(_)
+                kkk = doc_ref(doc, _)
                 if x['read_doc']:
-                    zzz = {'identity': doc}.update(_)
+                    zzz = doc_ref(doc, _)
         if zzz is None:
             if kkk is not None:
                 sql_reference.append(kkk)
@@ -326,17 +337,18 @@ def multiprocessing_reader() -> list:
         queue_ins = multiprocessing.Manager().Queue()
         for i in range(len_doc // 2):  # 每2个文档读取需求开启一个进程
             doc_group = [doc_reference[i * 2], doc_reference[i * 2 + 1]]
-            pool.apply_async(reading_worker, (queue_ins, doc_group))
+            pool.apply_async(reading_worker, (queue_ins, doc_group, files_list))
             # print(doc_group)
         doc_group = sql_reference  # 把需要从sqlite中读取的需求也加进最后一个进程
         if len_doc % 2 == 1:
             doc_group.append(doc_reference[-1])  # 把奇数末尾一个文档读取的需求也加进最后一个进程
-        pool.apply_async(reading_worker, (queue_ins, doc_group))
+        if len(doc_group):
+            pool.apply_async(reading_worker, (queue_ins, doc_group, files_list))
         pool.close()
         pool.join()
     else:
         queue_ins = queue.Queue()
-        reading_worker(queue_ins, None)  # 将数据放入便于读取的queue中
+        reading_worker(queue_ins, None, files_list)  # 将数据放入便于读取的queue中
     data_ins_list = []
     while not queue_ins.empty():
         data_ins = queue_ins.get()
