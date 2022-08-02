@@ -23,7 +23,7 @@ MULTI_SHEETS_SLICE = r'\u65b0\u54c1|\u5BC4\u552E|\u5546\u5BB6\u4ED3'
 # xlsx转csv文件size触发阈值
 XLSX_TO_CSV_THRESHOLD = 2 ** 9
 # 给sys.stdout添加中间件, 使用utf8编解码, 替代windows系统中的GBK
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+# sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 # 寄售初算表头
 RDC_PRIMARY_PROFILE = [
     '序号', '分类', '四级类目', '货品ID', '商品条码', '商品ID', 'SKUID', '商品名称', '单件成本', '供货价', '毛保', '运费',
@@ -131,35 +131,39 @@ DOC_REFERENCE = {
     'tmj_atom': {
         'key_words': '单品明细', 'key_pos': ['商家编码', ],
         'val_pos': ['会员价', '重量'], 'val_type': ['REAL', 'REAL'], 'importance': 'required',
+        'pre_func': ['pre_func_interface', ]
     },
     'tmj_combination': {
-        'key_words': '组合装明细', 'key_pos': ['商家编码', ], 'val_pos': ['单品名称', '单品货品编号', '单品商家编码', '数量'],
-        'val_type': ['TEXT', 'TEXT', 'TEXT', 'INT'],
+        'key_words': '组合装明细', 'key_pos': ['商家编码', '单品货品编号', '单品商家编码', ], 'val_pos': ['单品名称', '数量'],
+        'val_type': ['TEXT', 'INT'], 'pre_func': ['pre_func_interface', ]
     },
     # 淘客导出的表格名称和商品列表名称相似, 因此要排除
     'mc_item': {
         'key_words': r'^((?!淘客).)*export-((?!淘客).)*$', 'key_pos': ['货品ID|货品编码', '条码', '商品ID|商品编码', 'SKUID|sku编码'],
-        'val_pos': ['自营类目id', '自营类目名称', '建档供应商编码', '建档供应商名称', ], 'val_type': ['TEXT', 'TEXT', 'TEXT', 'TEXT', ],
+        'val_pos': ['自营类目id', '自营类目名称', '建档供应商名称', ], 'val_type': ['TEXT', 'TEXT', 'TEXT', ],
+        'pre_func': ['pre_func_interface', ]
     },
     'sjc_new_item': {
         'key_words': '商家仓新品表格', 'key_pos': ['商品ID|商品编码', 'SKUID|SKU编码', ],
         'val_pos': ['供货价', ], 'val_type': ['REAL', ], 'sheet_criteria': '新品|湿巾洗衣',
+        'pre_func': ['pre_func_interface', ]
     },
     'mc_category': {
         'key_words': '猫超类目扣点', 'key_pos': ['自营四级类目ID', '四级类目名称', ],
         'val_pos': ['扣点', '毛保', '运费', '渠道推广服务费', '自主分类', ],
         'val_type': ['REAL', 'REAL', 'REAL', 'REAL', 'TEXT', ], 'sheet_criteria': '寄售|商家仓',
+        'pre_func': ['pre_func_interface', ]
     },
     'daily_sales': {
         'key_words': '销售日报', 'key_pos': ['日期|统计日期', '商品id', 'SKUID', '货品id', '业务类型', '四级类目名称', ],
         'val_pos': ['净销售数量', r'净销售额|订单实付（退款后）', ],
-        'val_type': ['REAL', 'REAL', ], 'mode': 'merge', 'pre_func': ['account_sales', ],
+        'val_type': ['REAL', 'REAL', ], 'mode': 'merge', 'pre_func': ['normalize_date_col', 'mc_time_series', ],
     },
     'tian_ji_sales': {
         'key_words': r'天机.*商品信息|商品信息.*天机',
         'key_pos': ['日期', '商品id', 'SKUID|SKU_ID', '类目名称', ],
         'val_pos': ['支付件数', '支付金额', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
-        'pre_func': ['account_sales', ],
+        'pre_func': ['normalize_date_col', 'mc_time_series', ],
     },
     'mao_chao_ka': {
         'key_words': '猫超买返卡|猫超卡', 'key_pos': ['日期|业务时间', '商品id', '货品id', '业务类型', ],

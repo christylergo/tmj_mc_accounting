@@ -23,11 +23,11 @@ if __name__ == '__main__':
     # ---------------------------------------------------------
     data_dict = {x['identity']: x for x in ripeness}
     assembled_data = {}
-    for _, inner_class in AssemblyLines.items():
-        for identity in data_dict:
-            if hasattr(inner_class, identity):
-                setattr(inner_class, identity, data_dict[identity])
-        df = inner_class.assemble()
-        assembled_data.update({_: df})
+    # for _, inner_class in AssemblyLines.items():
+    #     for identity in data_dict:
+    #         if hasattr(inner_class, identity):
+    #             setattr(inner_class, identity, data_dict[identity])
+    #     df = inner_class.assemble()
+    #     assembled_data.update({_: df})
 
 

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import time
+import random
 import win32api
 import win32con
 from win32com import client
@@ -22,14 +23,14 @@ def initialize_csv_cache(csv_path):
     li = list(p.glob('*'))
     for f in li:
         size += f.stat().st_size
-    # 如果文件合计size大于512m, 清空文件夹
-    if size > 2 ** 19:
+    # 如果文件合计size大于512M, 清空文件夹
+    if size > 2 ** 29:
         for f in li:
             f.unlink()
     # print('tracing--->>>')
 
 
-def xlsx_to_csv(file_name: list, csv_path) -> str:
+def xlsx_to_csv(file_name: list, csv_path):
     """
     open the xlsx file with win32 api,
     then convert the file into csv
@@ -39,7 +40,8 @@ def xlsx_to_csv(file_name: list, csv_path) -> str:
     excel.Visible = False
     csv_file = []
     for f in file_name:
-        repl = str(id(f)) + '.csv'
+        # 随机命名csv避免名称重复
+        repl = str(id(f)) + str(random.randrange(0, 10000)) + '.csv'
         csv_f = os.path.join(csv_path, repl)
         wb = excel.Workbooks.Open(f)
         if wb.Sheets.Count > 1:
@@ -53,5 +55,7 @@ def xlsx_to_csv(file_name: list, csv_path) -> str:
         wb.Close()
         excel.DisplayAlerts = True
         csv_file.append(csv_f)
+        print(f"{f}--- has been cached in {os.path.basename(csv_f)}...")
     excel.Quit()
-    return csv_file
+    xlsx_csv = list(zip(file_name, csv_file))
+    return xlsx_csv

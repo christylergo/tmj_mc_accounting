@@ -94,11 +94,16 @@ class DocumentIO:
                     file['file_mtime_in_sqlite'] = row[2]
                     if file['file_mtime'] == row[2]:
                         file['read_doc'] = False
-        # for file in cls.files:
-        #     if re.match(r'^.+\.xlsx$', file['file_name']) and file['read_doc']:
-        #         if file['identity'] and file['file_size'] > st.XLSX_TO_CSV_THRESHOLD:
-        #             file['file_name'] = csv.xlsx_to_csv(file['file_name'], cls.csv_path)
-
+        xlsx_list = []
+        for file in cls.files:
+            if re.match(r'^.+\.xlsx$', file['file_name']) and file['read_doc']:
+                if file['identity'] and file['file_size'] > st.XLSX_TO_CSV_THRESHOLD:
+                    xlsx_list.append(file['file_name'])
+        csv_list = csv.xlsx_to_csv(xlsx_list, cls.csv_path)
+        for file in cls.files:
+            for i, j in csv_list:
+                if i == file['file_name']:
+                    file['file_name'] = j
         cursor.close()
         conn.close()
         cls.mutex.release()
@@ -130,13 +135,8 @@ class DocumentIO:
                 self.switch = True
                 # file name 是完整的带有路径的文件名, 可以用于读取, base name是不带路径的文件名
                 if file['read_doc'] is True:
-                    if re.match(r'^.+\.xlsx$', file['file_name']) and file['file_size'] > st.XLSX_TO_CSV_THRESHOLD:
-                        xlsx_file.append(file['file_name'])
-                    else:
-                        file_name.append(file['file_name'])
+                    file_name.append(file['file_name'])
                 read_doc = read_doc or file['read_doc']
-        if len(xlsx_file):
-            file_name.extend(csv.xlsx_to_csv(xlsx_file, self.csv_path))
         if not read_doc:
             self.from_sql = 'substitute'  # 是否从sqlite读取的最终依据是文件是否更新过
         if self.switch:
@@ -266,7 +266,7 @@ class DocumentIO:
                     cursor.execute(sql_query)
                     to_sql['to_sql_df'].to_sql(
                         to_sql['identity'], conn, if_exists='append', index=False, chunksize=1000)
-                print(f"{to_sql['identity']} have written data to sqlite ...")
+                print(f"{to_sql['identity']} has pumped data into sqlite ...")
                 # 写入sqlite的文件更新信息, 避免出现线程执行失败, 但是文件信息却更新了的情况
                 for file in cls.files:
                     if file['identity'] == to_sql['identity']:
@@ -329,10 +329,12 @@ def multiprocessing_reader() -> list:
         else:
             doc_reference.append(zzz)
     len_doc = len(doc_reference)
-    if len_doc > 1:
+    if len_doc > 2:
         print('multiprocessing is initialized.')
+        # 最多开启3个进程, 由于pywin32Excel接口的限制, 多进程提升不明显
         if cpus >= (len_doc + 1) // 2:
             cpus = (len_doc + 1) // 2
+            cpus = 3 if cpus > 3 else cpus
         pool = multiprocessing.Pool(cpus)
         queue_ins = multiprocessing.Manager().Queue()
         for i in range(len_doc // 2):  # 每2个文档读取需求开启一个进程
