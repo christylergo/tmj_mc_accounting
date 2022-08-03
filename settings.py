@@ -21,7 +21,7 @@ FILE_GENERATED_PATH = ''
 # 多sheets读取范围
 MULTI_SHEETS_SLICE = r'\u65b0\u54c1|\u5BC4\u552E|\u5546\u5BB6\u4ED3'
 # xlsx转csv文件size触发阈值
-XLSX_TO_CSV_THRESHOLD = 2 ** 9
+XLSX_TO_CSV_THRESHOLD = 2 ** 19
 # 给sys.stdout添加中间件, 使用utf8编解码, 替代windows系统中的GBK
 # sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 # 寄售初算表头
@@ -62,7 +62,7 @@ FEATURE_PROPERTY = {
     # 货品ID
     'commodity_id': {'priority': 4, 'name': '货品ID', 'width': 15, 'data_type': str, 'floating_title': '货品id', },
     # 条码
-    'barcode': {'priority': 5, 'name': '商品条码', 'width': 15, 'data_type': str, 'floating_title': '条码', },
+    'barcode': {'priority': 5, 'name': '商品条码', 'width': 15, 'data_type': str, 'floating_title': '商家编码', },
     # 商品ID
     'item_id': {'priority': 6, 'name': '商品ID', 'width': 15, 'data_type': str, 'floating_title': '商品id', },
     # skuID
@@ -71,7 +71,7 @@ FEATURE_PROPERTY = {
     'item_name': {'priority': 8, 'name': '商品名称', 'width': 40, 'alignment': 'left', 'data_type': str,
                   'floating_title': '商品名称', },
     # 单件成本
-    'unit_cost': {'priority': 9, 'name': '单件成本', 'floating_title': 'unit_cost', },
+        'unit_cost': {'priority': 9, 'name': '单件成本', 'floating_title': 'unit_cost', },
     # 供货价
     'supply_price': {'priority': 10, 'name': '供货价', 'floating_title': '供货价', },
     # 毛保
@@ -130,17 +130,18 @@ FEATURE_PROPERTY = {
 DOC_REFERENCE = {
     'tmj_atom': {
         'key_words': '单品明细', 'key_pos': ['商家编码', ],
-        'val_pos': ['会员价', '重量'], 'val_type': ['REAL', 'REAL'], 'importance': 'required',
+        'val_pos': ['会员价', ], 'val_type': ['REAL', ], 'importance': 'required',
         'pre_func': ['pre_func_interface', ]
     },
     'tmj_combination': {
-        'key_words': '组合装明细', 'key_pos': ['商家编码', '单品货品编号', '单品商家编码', ], 'val_pos': ['单品名称', '数量'],
-        'val_type': ['TEXT', 'INT'], 'pre_func': ['pre_func_interface', ]
+        'key_words': '组合装明细', 'key_pos': ['商家编码', '单品货品编号', '单品商家编码', ], 'val_pos': ['数量'],
+        'val_type': ['INT'], 'pre_func': ['pre_func_interface', ]
     },
     # 淘客导出的表格名称和商品列表名称相似, 因此要排除
     'mc_item': {
-        'key_words': r'^((?!淘客).)*export-((?!淘客).)*$', 'key_pos': ['货品ID|货品编码', '条码', '商品ID|商品编码', 'SKUID|sku编码'],
-        'val_pos': ['自营类目id', '自营类目名称', '建档供应商名称', ], 'val_type': ['TEXT', 'TEXT', 'TEXT', ],
+        'key_words': r'^((?!淘客).)*export-((?!淘客).)*$',
+        'key_pos': ['货品ID|货品编码', '商家编码|条码', '商品ID|商品编码', 'SKUID|sku编码', '自营类目id', ],
+        'val_pos': ['自营类目名称', '建档供应商名称', ], 'val_type': ['TEXT', 'TEXT', ],
         'pre_func': ['pre_func_interface', ]
     },
     'sjc_new_item': {

@@ -9,22 +9,10 @@ import datetime
 from collections import namedtuple
 import multiprocessing
 import threading
+import pandas as pd
 
 
-def zip_test(func):
-    func_list = []
+dft = pd.DataFrame({"a": [1, 2, 3, 9, 9], "b": [4, 5, 6, 9, 9], "c": ['7', 'aaa', 'ccc', '9', '9']})
 
-    def func_series():
-        func_list.append(func)
-        for i in func_list:
-            print(i)
-    return func_series
-
-z = zip_test('aaa')
-
-z()
-
-f = zip_test('bbb')
-
-f()
-
+df = dft.astype("string")
+print(df.duplicated().any())

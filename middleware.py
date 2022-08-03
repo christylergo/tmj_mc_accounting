@@ -69,7 +69,9 @@ def convert_date_type(data_ins):
     df = data_ins['data_frame']
     key_pos = list(map(lambda x: x.split('|')[0], data_ins['doc_ref']['key_pos']))
     key_pos = [col for col in key_pos if col in df.columns]
-    df.loc[:, key_pos] = df.loc[:, key_pos].astype('str')
+    # pandas的text数据方法只能用于series
+    for col in key_pos:
+        df.loc[:, col] = df.loc[:, col].astype('string').str.replace(r'\.0+$|^=\"|\"$', '', regex=True)
 
 
 def rectify_time_series(data_ins, interval):
@@ -168,6 +170,17 @@ def mc_item(data_ins):
 
 
 @assembly(MiddlewareArsenal)
+def tmj_combination(data_ins):
+    """
+    组合装明细表格中不能出现重复数据, 如果有的话会导致严重错误
+    """
+    df = data_ins['data_frame']
+    if df.duplicated(keep=False).any():
+        raise ValueError('---组合装明细表格中有重复数据!---')
+    df.drop_duplicates(inplace=True)
+
+
+@assembly(MiddlewareArsenal)
 def ambiguity_to_explicitness(data_ins) -> None:
     """
     重命名易混淆列
@@ -201,32 +214,79 @@ data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': da
 """
 
 
+def combine_df(master=None, slave=None, mapping=None) -> pd.DataFrame():
+    if mapping is None:
+        return None
+    slave_copy = pd.DataFrame(columns=master.columns.to_list())
+    for xx in mapping:
+        if xx[1] is np.nan:
+            slave_copy.loc[:, xx[0]] = np.nan
+        else:
+            slave_copy.loc[:, xx[0]] = slave.loc[:, xx[1]]
+    df = pd.concat([master, slave_copy], ignore_index=True)
+    df.fillna(value=1, inplace=True)
+    return df
+
+
 @assembly(AssemblyLines)
-class VipElementWiseStockInventory:
+class McElementWiseCost:
     """
-    匹配每个唯品条码对应的各仓库存, 首先应把唯品条码map到tmj组合及单品.
+    构建每个商品sku成本
     data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': data_frame,
     'to_sql_df': sql_df, 'mode': self.from_sql}
     """
     tmj_combination = None
     tmj_atom = None
-    vip_fundamental_collections = None
-    vip_bench_player = None
+    mc_item = None
 
     @classmethod
     def assemble(cls) -> pd.DataFrame():
-        start = time.time()
-        ...
+        a = []
+        a.extend(cls.tmj_atom['doc_ref']['key_pos'])
+        a.extend(cls.tmj_atom['doc_ref']['val_pos'])
+        c = []
+        c.extend(cls.tmj_combination['doc_ref']['key_pos'])
+        c.extend(cls.tmj_combination['doc_ref']['val_pos'])
+        combination = cls.tmj_combination['data_frame']
+        atom = cls.tmj_atom['data_frame']
+        item = cls.mc_item['data_frame']
+        mapping = [(c[0], a[0]), (c[1], a[0]), (c[2], a[0]), (c[3], np.nan), ]
+        df = combine_df(combination, atom, mapping)
+        df.drop_duplicates(inplace=True)
+        df = pd.merge(item, df, on=c[0], how='left')
+        # 避免名称冲突导致的自动重命名
+        atom = atom.rename({a[0]: c[2]}, axis=1)
+        df = pd.merge(df, atom, on=c[2], how='left')
+        df.dropna(subset=c[2], inplace=True)
+        df['unit_cost'] = df[a[-1]] * df[c[-1]]
+        gp = df.groupby(by=c[0])
+        df['unit_cost'] = gp.unit_cost.transform(np.sum)
+        return df
+
+
+@assembly(AssemblyLines)
+class McElementWiseCost:
+    """
+    构建每个商品sku成本
+    data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': data_frame,
+    'to_sql_df': sql_df, 'mode': self.from_sql}
+    """
+    tmj_combination = None
+    tmj_atom = None
+    mc_item = None
+
+    @classmethod
+    def assemble(cls) -> pd.DataFrame():
+        a = []
 
 
 @assembly(AssemblyLines)
 class FinalAssembly:
     subassembly = None
     vip_summary = None
-    doc_ref = {xx['identity']: xx for xx in st.DOC_REFERENCE}
 
     @classmethod
-    def disassemble(cls, args):
+    def assemble(cls):
         ...
 
 # ----------------------------------------------------------
