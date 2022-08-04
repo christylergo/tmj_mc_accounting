@@ -9,10 +9,12 @@ from middleware import MiddlewareArsenal
 from middleware import AssemblyLines
 
 if __name__ == '__main__':
-    old_time = time.time()
+    start = time.time()
     raw_data = multiprocessing_reader()
+    end = time.time()
+    print('**********', end - start, '***********')
     # 对已读取的dataframe进行预处理
-    print(time.time() - old_time)
+    start = time.time()
     for data in raw_data:
         identity = data['identity']
         func = MiddlewareArsenal[identity]
@@ -20,6 +22,8 @@ if __name__ == '__main__':
         func(data)
     ripeness = raw_data
     DocumentIO.update_to_sqlite(ripeness)  # 最后更新文件信息,避免干扰读取
+    end = time.time()
+    print('**********', end - start, '***********')
     # ---------------------------------------------------------
     data_dict = {x['identity']: x for x in ripeness}
     assembled_data = {}
@@ -28,7 +32,9 @@ if __name__ == '__main__':
             if hasattr(line, identity):
                 setattr(line, identity, data_dict[identity])
         df = line.assemble()
-        assembled_data.update({_: df})
-pass
+        assembled_data[_] = df
+    for _, part in assembled_data.items():
+        ...
+
 
 

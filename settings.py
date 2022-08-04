@@ -12,6 +12,8 @@ from collections import namedtuple
 SHOW_DOC_AFTER_GENERATED = True
 # 销售日期区间, 默认前30天
 MC_SALES_INTERVAL = 60
+# 默认采用销售日报数据, 设置为False则默认采用天机销售数据
+DAILY_SALES = True
 # 网上导出数据文件夹路径
 DOCS_PATH = 'mc_docs'
 # 代码文件夹路径
@@ -53,7 +55,7 @@ FEATURE_PROPERTY = {
     'row_nu': {'priority': 0, 'name': '序号', 'visible': True, 'width': 5, 'data_type': int,
                'floating_title': 'row_nu', },
     # 分组, 寄售 | 商家仓
-    'group': {'priority': 1, 'name': '分组', 'data_type': str, 'floating_title': 'group', },
+    'group': {'priority': 1, 'name': '分组', 'data_type': str, 'floating_title': 'grouping', },
     # 自主分类
     'category': {'priority': 2, 'name': '分类', 'data_type': str, 'floating_title': '自主分类', },
     # 四级类目
@@ -71,7 +73,7 @@ FEATURE_PROPERTY = {
     'item_name': {'priority': 8, 'name': '商品名称', 'width': 40, 'alignment': 'left', 'data_type': str,
                   'floating_title': '商品名称', },
     # 单件成本
-        'unit_cost': {'priority': 9, 'name': '单件成本', 'floating_title': 'unit_cost', },
+    'unit_cost': {'priority': 9, 'name': '单件成本', 'floating_title': 'unit_cost', },
     # 供货价
     'supply_price': {'priority': 10, 'name': '供货价', 'floating_title': '供货价', },
     # 毛保
@@ -81,9 +83,9 @@ FEATURE_PROPERTY = {
     # 扣点
     'profit_share': {'priority': 13, 'name': '扣点', 'floating_title': '扣点', },
     # 销售额
-    'sales': {'priority': 14, 'name': '销售额', 'floating_title': '订单实付（退款后）|支付金额', },
+    'sales': {'priority': 14, 'name': '销售额', 'floating_title': 'sales', },
     # 销量
-    'sales_volume': {'priority': 15, 'name': '销量', 'data_type': int, 'floating_title': '净销售数量|支付件数', },
+    'sales_volume': {'priority': 15, 'name': '销量', 'data_type': int, 'floating_title': 'sales_volume', },
     # 平均到手价
     'mean_actual_price': {'priority': 16, 'name': '平均到手价', 'floating_title': 'mean_actual_price', },
     # 单件毛利
@@ -125,59 +127,61 @@ FEATURE_PROPERTY = {
 
 """
 文件重要性的程度分为三类,'required'是必须的,'caution'是不必须,缺少的情况下会提示,'optional'是可选
-竖线后面的是表头实际名称
+竖线后面的是表头实际名称, 所有统一的名称中的字母小写lower
 """
 DOC_REFERENCE = {
     'tmj_atom': {
         'key_words': '单品明细', 'key_pos': ['商家编码', ],
         'val_pos': ['会员价', ], 'val_type': ['REAL', ], 'importance': 'required',
-        'pre_func': ['pre_func_interface', ]
     },
     'tmj_combination': {
         'key_words': '组合装明细', 'key_pos': ['商家编码', '单品货品编号', '单品商家编码', ], 'val_pos': ['数量'],
-        'val_type': ['INT'], 'pre_func': ['pre_func_interface', ]
+        'val_type': ['INT'],
     },
     # 淘客导出的表格名称和商品列表名称相似, 因此要排除
     'mc_item': {
         'key_words': r'^((?!淘客).)*export-((?!淘客).)*$',
-        'key_pos': ['货品ID|货品编码', '商家编码|条码', '商品ID|商品编码', 'SKUID|sku编码', '自营类目id', ],
-        'val_pos': ['自营类目名称', '建档供应商名称', ], 'val_type': ['TEXT', 'TEXT', ],
+        'key_pos': ['货品id|货品编码', '商家编码|条码', '商品id|商品编码', 'skuid|sku编码', '自营类目id', ],
+        'val_pos': ['所属店铺', '自营类目名称', '建档供应商名称', ], 'val_type': ['TEXT', 'TEXT', 'TEXT', ],
         'pre_func': ['pre_func_interface', ]
     },
     'sjc_new_item': {
-        'key_words': '商家仓新品表格', 'key_pos': ['商品ID|商品编码', 'SKUID|SKU编码', ],
+        'key_words': '商家仓新品表格', 'key_pos': ['商品id|商品编码', 'skuid|SKU编码', ],
         'val_pos': ['供货价', ], 'val_type': ['REAL', ], 'sheet_criteria': '新品|湿巾洗衣',
-        'pre_func': ['pre_func_interface', ]
+        'pre_func': ['pre_func_interface', ],
     },
     'mc_category': {
-        'key_words': '猫超类目扣点', 'key_pos': ['自营四级类目ID', '四级类目名称', ],
-        'val_pos': ['扣点', '毛保', '运费', '渠道推广服务费', '自主分类', ],
+        'key_words': '猫超类目扣点', 'key_pos': ['自营类目id', 'grouping|分组', '四级类目名称', '自主分类', ],
+        'val_pos': ['扣点', '毛保', '运费', '渠道推广服务费', ],
         'val_type': ['REAL', 'REAL', 'REAL', 'REAL', 'TEXT', ], 'sheet_criteria': '寄售|商家仓',
         'pre_func': ['pre_func_interface', ]
     },
+    'supply_price': {
+        'key_words': r'HDB202[0-9]\d{4}', 'key_pos': ['日期|业务时间', '货品id|后端商品编码', '费用类型', ],
+        'val_pos': ['供货价|含税单价', ], 'val_type': ['REAL', ], 'mode': 'merge', 'row_criteria': {'费用类型': '货款'},
+    },
     'daily_sales': {
-        'key_words': '销售日报', 'key_pos': ['日期|统计日期', '商品id', 'SKUID', '货品id', '业务类型', '四级类目名称', ],
-        'val_pos': ['净销售数量', r'净销售额|订单实付（退款后）', ],
+        'key_words': '销售日报', 'key_pos': ['日期|统计日期', '货品id', ],
+        'val_pos': ['sales_volume|净销售数量', r'sales|订单实付（退款后）', ],
         'val_type': ['REAL', 'REAL', ], 'mode': 'merge', 'pre_func': ['normalize_date_col', 'mc_time_series', ],
     },
     'tian_ji_sales': {
-        'key_words': r'天机.*商品信息|商品信息.*天机',
-        'key_pos': ['日期', '商品id', 'SKUID|SKU_ID', '类目名称', ],
-        'val_pos': ['支付件数', '支付金额', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
+        'key_words': r'天机.*商品信息|商品信息.*天机', 'key_pos': ['日期', '商品id', 'skuid|SKU_ID', ],
+        'val_pos': ['sales_volume|支付件数', 'sales|支付金额', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
         'pre_func': ['normalize_date_col', 'mc_time_series', ],
     },
     'mao_chao_ka': {
-        'key_words': '猫超买返卡|猫超卡', 'key_pos': ['日期|业务时间', '商品id', '货品id', '业务类型', ],
+        'key_words': '猫超买返卡|猫超卡', 'key_pos': ['日期|业务时间', '商品id', ],
         'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
     },
     'tao_ke': {
         'key_words': '淘客', 'key_pos': ['日期|数据时间', '商品id', ],
         'val_pos': ['结算佣金', '付款服务费', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ],
     },
     'wan_xiang_tai': {
-        'key_words': '万向台|货品加速', 'key_pos': ['日期', '商品ID|宝贝Id', ],
+        'key_words': '万向台|货品加速', 'key_pos': ['日期', '商品id|宝贝Id', ],
         'val_pos': ['消耗', ], 'val_type': ['REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
     },
