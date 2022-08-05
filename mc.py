@@ -25,16 +25,27 @@ if __name__ == '__main__':
     end = time.time()
     print('**********', end - start, '***********')
     # ---------------------------------------------------------
-    data_dict = {x['identity']: x for x in ripeness}
-    assembled_data = {}
+    assembled_snippet = {}
     for _, line in AssemblyLines.items():
-        for identity in data_dict:
-            if hasattr(line, identity):
-                setattr(line, identity, data_dict[identity])
+        for data in ripeness:
+            w = data['identity']
+            if hasattr(line, w):
+                setattr(line, w, data)
         df = line.assemble()
-        assembled_data[_] = df
-    for _, part in assembled_data.items():
-        ...
+        assembled_snippet[_] = df
+    # ---------------------------------------------------------
+    final_data = {}
+    for i in AssemblyLines:
+        line = AssemblyLines[i]
+        for _ in assembled_snippet:
+            snippet = assembled_snippet[_]
+            if hasattr(line, _):
+                setattr(line, _, snippet)
+        if not line.operated:
+            df = line.assemble()
+            final_data[i] = df
 
+
+...
 
 

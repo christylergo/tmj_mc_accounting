@@ -22,7 +22,6 @@ data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': da
 'to_sql_df': sql_df, 'mode': self.from_sql}
 """
 
-
 MiddlewareArsenal = defaultdict(lambda: lambda m: m)
 AssemblyLines = {}
 
@@ -36,18 +35,24 @@ def assembly(arg: Dict[str, callable]):
             legacy = obj(*args, **kwargs)
             return legacy
 
-        operator = inner_operator if isinstance(obj, types.FunctionType) else obj
+        if isinstance(obj, types.FunctionType):
+            operator = inner_operator
+            obj_name = obj.__name__
+        else:
+            operator = obj
+            obj_name = wrapper_line_name(obj.__name__)
+
         for doc in (w := st.DOC_REFERENCE):
-            if obj.__name__ in w[doc].get('pre_func', []):
+            if obj_name in w[doc].get('pre_func', []):
                 if doc in arg:
                     # func拼接后执行顺序和定义时顺序一致
                     arg[doc] = zip_func([arg[doc], operator])
                 else:
                     arg[doc] = operator
-        if (f := obj.__name__) in arg:
-            arg[f] = zip_func([arg[f], operator])
+        if obj_name in arg:
+            arg[obj_name] = zip_func([arg[obj_name], operator])
         else:
-            arg[f] = operator
+            arg[obj_name] = operator
         return operator
 
     return beneath_decorator
@@ -58,6 +63,7 @@ def zip_func(funcs: list):
     fa, fb...的参数必须相同, 这样才能串行操作
     最好不需要返回值, 不然操作起来比较麻烦
     """
+
     def func_series(*args, **kwargs):
         for f in funcs:
             f(*args, **kwargs)
@@ -166,6 +172,11 @@ def sjc_new_item(data_ins):
 
 
 @assembly(MiddlewareArsenal)
+def mc_category(data_ins):
+    data_ins['data_frame'] = data_ins['data_frame'].fillna(0)
+
+
+@assembly(MiddlewareArsenal)
 def mc_item(data_ins):
     col = data_ins['doc_ref']['val_pos'][-1]
     df = data_ins['data_frame'].copy()
@@ -245,6 +256,8 @@ def pre_func_interface(data_ins):
     部分data frame需要通过interface对接这个预处理,
     """
     ...
+
+
 # ---------------------------------------------------------------------------------------------
 
 
@@ -260,12 +273,25 @@ data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': da
 """
 
 
-def validate_attr(cls):
+def validate_attr(cls) -> bool:
+    ready = True
     for attr in cls.__dict__:
         if re.match(r'^(?!assemble)[^_].*[^_]$', attr):
             attribute = getattr(cls, attr)
-            if attribute is None or attribute['data_frame'].empty:
+            if attribute is None:
                 raise ValueError(f'---{attr} is invalid!---')
+            elif isinstance(attribute, dict):
+                if attribute['data_frame'].empty:
+                    raise ValueError(f'---{attr} is invalid!---')
+            elif isinstance(attribute, pd.DataFrame):
+                if attribute.empty:
+                    ready = False
+    setattr(cls, 'operated', ready)
+    return ready
+
+
+# readiness is alias for validate_attr
+readiness = validate_attr
 
 
 def combine_df(master=None, slave=None, mapping=None) -> pd.DataFrame():
@@ -282,8 +308,17 @@ def combine_df(master=None, slave=None, mapping=None) -> pd.DataFrame():
     return df
 
 
+def wrapper_line_name(line_name):
+    catch = re.findall(r'[A-Z][a-z]+', line_name)
+    if not catch:
+        raise ValueError('***assembly line class is not named correctly! ***')
+    snippets = [m.lower() for m in catch]
+    new_name = str.join('_', snippets)
+    return new_name
+
+
 @assembly(AssemblyLines)
-class McElementWiseCost:
+class ElementWiseCost:
     """
     构建每个商品sku成本
     data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': data_frame,
@@ -320,7 +355,7 @@ class McElementWiseCost:
 
 
 @assembly(AssemblyLines)
-class McElementWiseParameter:
+class ElementWiseParameter:
     """
     匹配每个商品sku的毛保/类目/扣点/供价等parameter
     """
@@ -348,7 +383,7 @@ class McElementWiseParameter:
 
 
 @assembly(AssemblyLines)
-class McElementWiseSales:
+class ElementWiseSales:
     """
     匹配每个商品sku的毛保/类目/扣点/供价等parameter
     """
@@ -378,7 +413,7 @@ class McElementWiseSales:
 
 
 @assembly(AssemblyLines)
-class McItemWisePromotionFee:
+class ItemWisePromotionFee:
     """
     匹配每个商品sku的毛保/类目/扣点/供价等parameter
     """
@@ -391,24 +426,78 @@ class McItemWisePromotionFee:
 
     @classmethod
     def assemble(cls) -> pd.DataFrame():
+        validate_attr(cls)
         df = cls.mc_item['data_frame']
         i_on = cls.mc_item['doc_ref']['key_pos'][2].split('|')[0]
+        accumulated_fee = []
         for attr in cls.__dict__:
-            if re.match(r'^(?!assemble)[^_].*[^_](?<!item)$', attr):
-                attribute = getattr(cls, attr)
+            attribute = getattr(cls, attr)
+            if re.match(r'^[^_].*[^_](?<!item)$', attr) and isinstance(attribute, dict):
+                accumulated_fee.append(attr)
                 slave = attribute['data_frame']
                 df = pd.merge(df, slave, on=i_on, how='left')
         df = df.fillna(value=0)
+        df['other_cost'] = df['yin_li_mo_fang'] + df['wan_xiang_tai']
+        df['accumulated_fee'] = df[accumulated_fee].agg(np.sum, axis=1)
         return df
 
 
 @assembly(AssemblyLines)
-class FinalAssembly:
-    subassembly = None
-    vip_summary = None
+class ElementWiseProfitAssembly:
+    mc_item = None
+    element_wise_cost = pd.DataFrame()
+    element_wise_parameter = pd.DataFrame()
+    element_wise_sales = pd.DataFrame()
 
     @classmethod
     def assemble(cls):
-        ...
-
-# ----------------------------------------------------------
+        if not readiness(cls):
+            return None
+        i_col = list(cls.mc_item['data_frame'].columns)
+        i_on = cls.mc_item['doc_ref']['key_pos'][0].split('|')[0]
+        df = cls.element_wise_sales
+        for attr in cls.__dict__:
+            slave = getattr(cls, attr)
+            if isinstance(slave, pd.DataFrame) and re.match(r'^.+(?<!sales)$', attr):
+                s_col = slave.columns
+                columns = [col for col in s_col if col not in i_col]
+                columns.insert(0, i_on)
+                slave = slave.reindex(columns=columns)
+                df = pd.merge(df, slave, on=i_on, how='left')
+        # 添加结算列, 显式定义这些列比较直观
+        df['unit_goss_profit'] = 0
+        df['gross_profit'] = 0
+        df['profit_rate'] = 0
+        df['actual_price_share'] = 0
+        df['retained_price_share'] = 0
+        df['unit_profit'] = 0  # 单件利润
+        df['unit_platform_profit'] = 0
+        df['unit_guaranteed_profit_variance'] = 0
+        df['guaranteed_profit_variance'] = 0
+        df['net_profit'] = 0  # 初算利润
+        df['net_profit_rate'] = 0
+        df['retained_profit'] = 0
+        df['retained_profit_rate'] = 0
+        # ---------------------------------------
+        criteria = df.isna().any(axis=1)
+        if criteria.any():
+            warnings.warn('***unexpected nan! ***')
+            print(df.head())
+        dfr = df.loc[~criteria, :].copy()
+        dfl = df.loc[criteria, :].copy()
+        # 进行新列间计算, 显式使用列名
+        dfr.loc[:, 'unit_goss_profit'] = dfr.loc[:, 'mean_actual_price'] - dfr.loc[:, 'unit_cost']
+        dfr.loc[:, 'gross_profit'] = dfr.loc[:, 'unit_goss_profit'] * dfr.loc[:, 'sales_volume']
+        dfr.loc[:, 'profit_rate'] = dfr.loc[:, 'unit_goss_profit'] / dfr.loc[:, 'mean_actual_price']
+        dfr.loc[:, 'actual_price_share'] = dfr.loc[:, 'mean_actual_price'] * (1 - dfr.loc[:, '毛保'])
+        criteria = dfr.loc[:, 'actual_price_share'] >= dfr.loc[:, '供货价']
+        dfr.loc[:, 'retained_price_share'] = np.where(criteria, dfr.loc[:, '供货价'], dfr.loc[:, 'actual_price_share'])
+        medium = dfr.loc[:, 'retained_price_share'] - dfr.loc[:, '供货价'] * (dfr.loc[:, '运费'] + dfr.loc[:, '渠道推广服务费'])
+        dfr.loc[:, 'unit_profit'] = medium - dfr.loc[:, 'unit_cost']
+        dfr.loc[:, 'unit_platform_profit'] = dfr.loc[:, 'mean_actual_price'] - dfr.loc[:, 'retained_price_share']
+        dfr.loc[:, 'unit_guaranteed_profit_variance'] = dfr.loc[:, 'actual_price_share'] - dfr.loc[:, '供货价']
+        dfr.loc[:, 'guaranteed_profit_variance'] = dfr.loc[:, 'unit_guaranteed_profit_variance'] * dfr.loc[:, 'sales_volume']
+        dfr.loc[:, 'net_profit'] = dfr.loc[:, 'unit_profit'] * dfr.loc[:, 'sales_volume']
+        dfr.loc[:, 'net_profit_rate'] = dfr.loc[:, 'net_profit'] / dfr.loc[:, 'sales']
+        df = pd.concat([dfl, dfr], ignore_index=True)
+        return df
