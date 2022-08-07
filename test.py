@@ -13,7 +13,8 @@ import threading
 import pandas as pd
 
 
-dft = pd.DataFrame({"a": [1, 2, 3, 9, 9], "b": [4, 5, 6, 9, 9], "c": ['7', 'aaa', 'ccc', '9', '9']})
+dft = pd.DataFrame({"a": [1, 2, 3, 9, 9], "b": [4, 5, 6, 9, 9], "c": [
+                   '7', 'aaa', 'ccc', '9', '9']})
 
 df = dft.astype("string")
 
@@ -22,12 +23,9 @@ n = re.findall(r'[A-Z][a-z]+', aaa)
 print(n)
 m = re.split(r'(?<=[a-z])(?=[A-Z])', aaa)
 
-print(m)
+print(dft)
 
+gp = dft.groupby('a')
+ddd = gp.b.sum()
 
-class A:
-    a: int
-    b: str
-
-
-print(hasattr(A, 'a'))
+print(ddd)

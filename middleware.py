@@ -84,7 +84,8 @@ def convert_date_type(data_ins):
     key_pos = [col for col in key_pos if col in df.columns]
     # pandas的text数据方法只能用于series
     for col in key_pos:
-        df.loc[:, col] = df.loc[:, col].astype('string').str.replace(r'\.0+$|^=\"|\"$', '', regex=True)
+        df.loc[:, col] = df.loc[:, col].astype(
+            'string').str.replace(r'\.0+$|^=\"|\"$', '', regex=True)
 
 
 def rectify_time_series(data_ins, interval):
@@ -128,7 +129,8 @@ def pivot_time_series(data_ins):
     if df.empty:
         return df
     # 自定义agg func很便捷但是会严重降低运行速度, 所以尽量使用np.sum .mean等原生函数方法
-    df = pd.pivot_table(df, index=key_col, values=val_col, aggfunc=np.sum, fill_value=0)
+    df = pd.pivot_table(df, index=key_col, values=val_col,
+                        aggfunc=np.sum, fill_value=0)
     # data_frame = data_frame.applymap(func=abs)
     # data_frame.columns = data_frame.columns.map(lambda xx: f"{pd.to_datetime(xx):%m/%d}")
     # data_frame.astype(np.float16, copy=False)
@@ -151,7 +153,8 @@ def normalize_date_col(data_ins) -> None:
     date_series = y.str.cat(m.str.cat(d, sep='-'), sep='-')
     ori_date = pd.to_datetime(data_frame[date_col]).dt.date.astype('str')
     # pd.to_datetime不能识别20220801这样的日期格式。从sqlite中读取的日期是经过处理的, 所以必须先判断日期格式然后进行处理
-    data_frame[date_col] = np.where(ori_date.str.match(r'^\d{8}$'), date_series, ori_date)
+    data_frame[date_col] = np.where(
+        ori_date.str.match(r'^\d{8}$'), date_series, ori_date)
 
 
 @assembly(MiddlewareArsenal)
@@ -160,7 +163,8 @@ def mc_time_series(data_ins) -> None:
     销售数据/推广数据表格是time series, 都要对时间筛选, 按主键进行求和汇总
     """
     interval = st.MC_SALES_INTERVAL
-    data_ins['data_frame'], data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
+    data_ins['data_frame'], data_ins['to_sql_df'] = rectify_time_series(
+        data_ins, interval)
     data_ins['data_frame'] = pivot_time_series(data_ins)
 
 
@@ -182,7 +186,8 @@ def mc_item(data_ins):
     df = data_ins['data_frame'].copy()
     df['grouping'] = df[col].str.split('-').str[1]
     # 排序之后主店排在前面, 之后drop duplicates指明keep=‘first’, 就可以优先保留主店信息
-    df = df.sort_values(by='所属店铺', axis=0, kind='mergesort', ignore_index=True, ascending=False)
+    df = df.sort_values(by='所属店铺', axis=0, kind='mergesort',
+                        ignore_index=True, ascending=False)
     data_ins['data_frame'] = df
 
 
@@ -218,7 +223,8 @@ def supply_price(data_ins):
     col = list_map(data_ins['doc_ref']['key_pos'])
     criteria = data_ins['doc_ref']['row_criteria'][col[2]]
     df = df[df[col[2]] == criteria]
-    data_ins['data_frame'] = df.drop_duplicates(subset=col[1], keep='first').copy()
+    data_ins['data_frame'] = df.drop_duplicates(
+        subset=col[1], keep='first').copy()
     df, data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
     val = data_ins['doc_ref']['val_pos'][0].split('|')[0]
     df = df.reindex(columns=[col[1], val])
@@ -233,7 +239,10 @@ def tao_ke(data_ins):
     df = data_ins['data_frame']
     val = list_map(data_ins['doc_ref']['val_pos'])
     df.loc[:, val[0]] = df[val[0]] + df[val[1]]
-    col = [data_ins['doc_ref']['key_pos'][1].split('|')[0], data_ins['identity']]
+    col = [
+        data_ins['doc_ref']['key_pos'][1].split('|')[0],
+        data_ins['identity'],
+    ]
     df = df.reindex(columns=col)
     data_ins['data_frame'] = df
 
@@ -286,7 +295,7 @@ def validate_attr(cls) -> bool:
             elif isinstance(attribute, pd.DataFrame):
                 if attribute.empty:
                     ready = False
-    setattr(cls, 'operated', ready)
+    cls.operated = ready
     return ready
 
 
@@ -294,7 +303,7 @@ def validate_attr(cls) -> bool:
 readiness = validate_attr
 
 
-def combine_df(master=None, slave=None, mapping=None) -> pd.DataFrame():
+def combine_df(master=None, slave=None, mapping=None) -> pd.DataFrame:
     if mapping is None:
         return None
     slave_copy = pd.DataFrame(columns=master.columns.to_list())
@@ -329,7 +338,7 @@ class ElementWiseCost:
     mc_item = None
 
     @classmethod
-    def assemble(cls) -> pd.DataFrame():
+    def assemble(cls) -> pd.DataFrame:
         validate_attr(cls)
         a = []
         a.extend(cls.tmj_atom['doc_ref']['key_pos'])
@@ -365,7 +374,7 @@ class ElementWiseParameter:
     supply_price = None
 
     @classmethod
-    def assemble(cls) -> pd.DataFrame():
+    def assemble(cls) -> pd.DataFrame:
         validate_attr(cls)
         category = cls.mc_category['data_frame']
         sjc_sp = cls.sjc_new_item['data_frame']
@@ -392,7 +401,7 @@ class ElementWiseSales:
     mc_item = None
 
     @classmethod
-    def assemble(cls) -> pd.DataFrame():
+    def assemble(cls) -> pd.DataFrame:
         if st.DAILY_SALES:
             mc_sales = cls.daily_sales
             cls.tian_ji_sales = mc_sales
@@ -408,7 +417,6 @@ class ElementWiseSales:
         sales = sales[sales[val[0]] != 0]
         item = item.drop_duplicates(subset=s_on, keep='first')
         df = pd.merge(item, sales, on=s_on, how='right')
-        df['mean_actual_price'] = df[val[1]] / df[val[0]]
         return df
 
 
@@ -425,7 +433,7 @@ class ItemWisePromotionFee:
     mc_item = None
 
     @classmethod
-    def assemble(cls) -> pd.DataFrame():
+    def assemble(cls) -> pd.DataFrame:
         validate_attr(cls)
         df = cls.mc_item['data_frame']
         i_on = cls.mc_item['doc_ref']['key_pos'][2].split('|')[0]
@@ -440,6 +448,61 @@ class ItemWisePromotionFee:
         df['other_cost'] = df['yin_li_mo_fang'] + df['wan_xiang_tai']
         df['accumulated_fee'] = df[accumulated_fee].agg(np.sum, axis=1)
         return df
+
+
+def profit_calculator(df: pd.DataFrame):
+    # 添加结算列, 显式定义这些列比较直观
+    df['mean_actual_price'] = 0
+    df['unit_goss_profit'] = 0
+    df['gross_profit'] = 0
+    df['profit_rate'] = 0
+    df['actual_price_share'] = 0
+    df['retained_price_share'] = 0
+    df['unit_profit'] = 0  # 单件利润
+    df['unit_platform_profit'] = 0
+    df['unit_guaranteed_profit_variance'] = 0
+    df['guaranteed_profit_variance'] = 0
+    df['net_profit'] = 0  # 初算利润
+    df['net_profit_rate'] = 0
+    df['retained_profit'] = 0
+    df['retained_profit_rate'] = 0
+    # ---------------------------------------
+    criteria = df.isna().any(axis=1)
+    if criteria.any():
+        warnings.warn('***unexpected nan! ***')
+        print(df.head())
+    dfr = df.loc[~criteria, :].copy()
+    dfl = df.loc[criteria, :].copy()
+    # 进行新列间计算, 显式使用列名
+    dfr.loc[:, 'mean_actual_price'] = dfr.loc[:, 'sales'] / \
+        dfr.loc[:, 'sales_volume']
+    dfr.loc[:, 'unit_goss_profit'] = \
+        dfr.loc[:, 'mean_actual_price'] - dfr.loc[:, 'unit_cost']
+    dfr.loc[:, 'gross_profit'] = \
+        dfr.loc[:, 'unit_goss_profit'] * dfr.loc[:, 'sales_volume']
+    dfr.loc[:, 'profit_rate'] = \
+        dfr.loc[:, 'unit_goss_profit'] / dfr.loc[:, 'mean_actual_price']
+    dfr.loc[:, 'actual_price_share'] = \
+        dfr.loc[:, 'mean_actual_price'] * (1 - dfr.loc[:, '毛保'])
+    criteria = dfr.loc[:, 'actual_price_share'] >= dfr.loc[:, '供货价']
+    dfr.loc[:, 'retained_price_share'] = np.where(
+        criteria, dfr.loc[:, '供货价'], dfr.loc[:, 'actual_price_share'])
+    medium = dfr.loc[:, 'retained_price_share'] - \
+        dfr.loc[:, '供货价'] * (dfr.loc[:, '运费'] + dfr.loc[:, '渠道推广服务费'])
+    dfr.loc[:, 'unit_profit'] = medium - dfr.loc[:, 'unit_cost']
+    dfr.loc[:, 'unit_platform_profit'] = \
+        dfr.loc[:, 'mean_actual_price'] - \
+        dfr.loc[:, 'retained_price_share']
+    dfr.loc[:, 'unit_guaranteed_profit_variance'] = \
+        dfr.loc[:, 'actual_price_share'] - dfr.loc[:, '供货价']
+    dfr.loc[:, 'guaranteed_profit_variance'] = \
+        dfr.loc[:, 'unit_guaranteed_profit_variance'] * \
+        dfr.loc[:, 'sales_volume']
+    dfr.loc[:, 'net_profit'] = dfr.loc[:, 'unit_profit'] * \
+        dfr.loc[:, 'sales_volume']
+    dfr.loc[:, 'net_profit_rate'] = \
+        dfr.loc[:, 'net_profit'] / dfr.loc[:, 'sales']
+    df = pd.concat([dfl, dfr], ignore_index=True)
 
 
 @assembly(AssemblyLines)
@@ -464,40 +527,60 @@ class ElementWiseProfitAssembly:
                 columns.insert(0, i_on)
                 slave = slave.reindex(columns=columns)
                 df = pd.merge(df, slave, on=i_on, how='left')
-        # 添加结算列, 显式定义这些列比较直观
-        df['unit_goss_profit'] = 0
-        df['gross_profit'] = 0
-        df['profit_rate'] = 0
-        df['actual_price_share'] = 0
-        df['retained_price_share'] = 0
-        df['unit_profit'] = 0  # 单件利润
-        df['unit_platform_profit'] = 0
-        df['unit_guaranteed_profit_variance'] = 0
-        df['guaranteed_profit_variance'] = 0
-        df['net_profit'] = 0  # 初算利润
-        df['net_profit_rate'] = 0
-        df['retained_profit'] = 0
-        df['retained_profit_rate'] = 0
-        # ---------------------------------------
-        criteria = df.isna().any(axis=1)
-        if criteria.any():
-            warnings.warn('***unexpected nan! ***')
-            print(df.head())
-        dfr = df.loc[~criteria, :].copy()
-        dfl = df.loc[criteria, :].copy()
-        # 进行新列间计算, 显式使用列名
-        dfr.loc[:, 'unit_goss_profit'] = dfr.loc[:, 'mean_actual_price'] - dfr.loc[:, 'unit_cost']
-        dfr.loc[:, 'gross_profit'] = dfr.loc[:, 'unit_goss_profit'] * dfr.loc[:, 'sales_volume']
-        dfr.loc[:, 'profit_rate'] = dfr.loc[:, 'unit_goss_profit'] / dfr.loc[:, 'mean_actual_price']
-        dfr.loc[:, 'actual_price_share'] = dfr.loc[:, 'mean_actual_price'] * (1 - dfr.loc[:, '毛保'])
-        criteria = dfr.loc[:, 'actual_price_share'] >= dfr.loc[:, '供货价']
-        dfr.loc[:, 'retained_price_share'] = np.where(criteria, dfr.loc[:, '供货价'], dfr.loc[:, 'actual_price_share'])
-        medium = dfr.loc[:, 'retained_price_share'] - dfr.loc[:, '供货价'] * (dfr.loc[:, '运费'] + dfr.loc[:, '渠道推广服务费'])
-        dfr.loc[:, 'unit_profit'] = medium - dfr.loc[:, 'unit_cost']
-        dfr.loc[:, 'unit_platform_profit'] = dfr.loc[:, 'mean_actual_price'] - dfr.loc[:, 'retained_price_share']
-        dfr.loc[:, 'unit_guaranteed_profit_variance'] = dfr.loc[:, 'actual_price_share'] - dfr.loc[:, '供货价']
-        dfr.loc[:, 'guaranteed_profit_variance'] = dfr.loc[:, 'unit_guaranteed_profit_variance'] * dfr.loc[:, 'sales_volume']
-        dfr.loc[:, 'net_profit'] = dfr.loc[:, 'unit_profit'] * dfr.loc[:, 'sales_volume']
-        dfr.loc[:, 'net_profit_rate'] = dfr.loc[:, 'net_profit'] / dfr.loc[:, 'sales']
-        df = pd.concat([dfl, dfr], ignore_index=True)
+        df = profit_calculator(df)
         return df
+
+
+@assembly(AssemblyLines)
+class ItemWiseProfitAssembly:
+    mc_item = None
+    item_wise_promotion_fee = pd.DataFrame()
+    element_wise_cost = pd.DataFrame()
+    element_wise_parameter = pd.DataFrame()
+    element_wise_sales = pd.DataFrame()
+
+    @classmethod
+    def assemble(cls):
+        if not readiness(cls):
+            return None
+        i_col = list(cls.mc_item['data_frame'].columns)
+        i_on = cls.mc_item['doc_ref']['key_pos'][2].split('|')[0]
+        df = cls.element_wise_sales
+        for attr in cls.__dict__:
+            slave = getattr(cls, attr)
+            if isinstance(slave, pd.DataFrame) and re.match(r'^.+(?<!sales)$', attr):
+                s_col = slave.columns
+                if not attr.endswith('fee'):
+                    on = cls.mc_item['doc_ref']['key_pos'][0].split('|')[0]
+                else:
+                    on = i_on
+                columns = [col for col in s_col if col not in i_col]
+                columns.insert(0, on)
+                slave = slave.reindex(columns=columns)
+                df = pd.merge(df, slave, on=i_on, how='left')
+        # -------------------------------------------------------------------------------
+        gp = df.groupby(by=i_on)
+        df.loc[:, 'unit_cost'].fillna(0)
+        df.loc[:, 'unit_cost'] = \
+            df.loc[:, 'unit_cost'] * df.loc[:, 'sales_volume']
+        df.loc[:, 'unit_cost'] = gp.unit_cost.transform(np.sum)
+        df.loc[:, 'sales'] = gp.sales.transform(np.sum)
+        df.loc[:, 'sales_volume'] = gp.sales_volume.transform(np.sum)
+        df.loc[:, 'unit_cost'] = \
+            df.loc[:, 'unit_cost'] / df.loc[:, 'sales_volume']
+        df.loc[:, 'unit_cost'] = np.where(
+            df['unit_cost'] == 0, np.nan, df['unit_cost'])
+        df = df.drop_duplicates(subset=i_on, keep='first')
+        df = profit_calculator(df)
+        return df
+
+
+@assembly(AssemblyLines)
+class FinalAssembly:
+    element_wise_profit_assembly = pd.DataFrame()
+    item_wise_profit_assembly = pd.DataFrame()
+
+    @classmethod
+    def assemble(cls):
+        if not readiness(cls):
+            return None

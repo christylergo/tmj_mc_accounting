@@ -7,7 +7,7 @@ import xlwings as xw
 import settings as st
 
 
-def add_styles(dataframe):
+def add_styles(final_df: list):
     """
     使用xlwings设置格式, 最多只能循环操作13次, 对于格式样式较多的表格来说很不合适, 这是pywin32接口限制造成的,
     为避开这些问题, 先使用openpyxl生成带格式空表格, 然后用xlwings打开并填充数据, xlwings的优点是直观高效

@@ -45,7 +45,10 @@ if __name__ == '__main__':
             df = line.assemble()
             final_data[i] = df
 
-
-...
-
-
+    line = AssemblyLines['final_assembly']
+    for _ in final_data:
+        df = assembled_snippet[_]
+        if hasattr(line, _):
+            setattr(line, _, df)
+    final_df = line.assemble()
+    styles.add_styles(final_df)
