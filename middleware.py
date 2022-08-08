@@ -4,13 +4,13 @@ import time
 import warnings
 import numpy as np
 import pandas as pd
-from collections import defaultdict
+from collections import (namedtuple, defaultdict)
 from functools import wraps
 import types
 import datetime
 from typing import Dict
 from typing import NamedTuple
-from typing import (List, Callable)
+from typing import (List, Callable, Optional)
 import settings as st
 
 """
@@ -192,6 +192,16 @@ def mc_item(data_ins):
 
 
 @assembly(MiddlewareArsenal)
+def mc_base_info(data_ins):
+    df = data_ins['data_frame']
+    df.dropna(inplace=True)
+    col = data_ins['doc_ref']['val_pos'][0]
+    df = df.set_index(col)
+    criteria = ~df.index.str.contains('被替换')
+    data_ins['data_frame'] = df[criteria]
+
+
+@assembly(MiddlewareArsenal)
 def tmj_atom(data_ins):
     """
     单品明细表格中不能出现重复数据, 如果有的话会导致严重错误
@@ -262,7 +272,8 @@ def ambiguity_to_explicitness(data_ins) -> None:
 def pre_func_interface(data_ins):
     """
     decorator中提供了预处理函数调用, 对所有的data frame的key列数据类型转换成string,
-    部分data frame需要通过interface对接这个预处理,
+    部分data frame需要通过interface对接这个预处理, 没有专用处理函数的数据表需要接入此
+    函数进行处理.
     """
     ...
 
@@ -295,7 +306,7 @@ def validate_attr(cls) -> bool:
             elif isinstance(attribute, pd.DataFrame):
                 if attribute.empty:
                     ready = False
-    cls.operated = ready
+    setattr(cls, 'operated', ready)
     return ready
 
 
@@ -303,7 +314,7 @@ def validate_attr(cls) -> bool:
 readiness = validate_attr
 
 
-def combine_df(master=None, slave=None, mapping=None) -> pd.DataFrame:
+def combine_df(master=None, slave=None, mapping=None) -> Optional[pd.DataFrame]:
     if mapping is None:
         return None
     slave_copy = pd.DataFrame(columns=master.columns.to_list())
@@ -335,11 +346,13 @@ class ElementWiseCost:
     """
     tmj_combination = None
     tmj_atom = None
+    mc_base_info = None
     mc_item = None
 
     @classmethod
     def assemble(cls) -> pd.DataFrame:
         validate_attr(cls)
+        i_on = cls.mc_item['doc_ref']['key_pos'][0].split('|')[0]
         a = []
         a.extend(cls.tmj_atom['doc_ref']['key_pos'])
         a.extend(cls.tmj_atom['doc_ref']['val_pos'])
@@ -348,10 +361,19 @@ class ElementWiseCost:
         c.extend(cls.tmj_combination['doc_ref']['val_pos'])
         combination = cls.tmj_combination['data_frame']
         atom = cls.tmj_atom['data_frame']
+        base_info = cls.mc_base_info['data_frame']
         item = cls.mc_item['data_frame']
         mapping = [(c[0], a[0]), (c[1], a[0]), (c[2], a[0]), (c[3], np.nan), ]
         df = combine_df(combination, atom, mapping)
         df.drop_duplicates(inplace=True)
+        # 把rdc中的mc条码替换成tmj的组合装条码
+        sjc_item = item[item['grouping'] == '商家仓']
+        rdc_item = item[item['grouping'] == '寄售']
+        rdc_item = rdc_item.set_index(c[0])
+        rdc_item = pd.merge(rdc_item, base_info, on=i_on, how='left')
+        item = pd.concat([rdc_item, sjc_item], axis=0, ignore_index=True)
+        item.dropna(inplace=True)
+        item = item.drop_duplicates()
         df = pd.merge(item, df, on=c[0], how='left')
         # 避免名称冲突导致的自动重命名
         atom = atom.rename({a[0]: c[2]}, axis=1)
@@ -360,6 +382,7 @@ class ElementWiseCost:
         df['unit_cost'] = df[a[-1]] * df[c[-1]]
         gp = df.groupby(by=c[0])
         df['unit_cost'] = gp.unit_cost.transform(np.sum)
+        df.drop_duplicates(subset=i_on, inplace=True, keep='first')
         return df
 
 
@@ -376,6 +399,7 @@ class ElementWiseParameter:
     @classmethod
     def assemble(cls) -> pd.DataFrame:
         validate_attr(cls)
+        i_on = cls.mc_item['doc_ref']['key_pos'][0].split('|')[0]
         category = cls.mc_category['data_frame']
         sjc_sp = cls.sjc_new_item['data_frame']
         rdc_sp = cls.supply_price['data_frame']
@@ -388,6 +412,9 @@ class ElementWiseParameter:
         df = pd.concat([sjc, rdc], ignore_index=True)
         df.drop_duplicates(subset=sjc_on, keep='last', inplace=True)
         df = pd.merge(df, category, on=c_on, how='inner')
+        df.drop_duplicates(subset=i_on, inplace=True, keep='first')
+        val = cls.supply_price['doc_ref']['val_pos'][0].split('|')[0]
+        df.loc[:, val] = df.loc[:, val].astype('float')
         return df
 
 
@@ -447,6 +474,7 @@ class ItemWisePromotionFee:
         df = df.fillna(value=0)
         df['other_cost'] = df['yin_li_mo_fang'] + df['wan_xiang_tai']
         df['accumulated_fee'] = df[accumulated_fee].agg(np.sum, axis=1)
+        df = df.drop_duplicates(subset=i_on, keep='first')
         return df
 
 
@@ -455,7 +483,7 @@ def profit_calculator(df: pd.DataFrame):
     df['mean_actual_price'] = 0
     df['unit_goss_profit'] = 0
     df['gross_profit'] = 0
-    df['profit_rate'] = 0
+    df['gross_profit_rate'] = 0
     df['actual_price_share'] = 0
     df['retained_price_share'] = 0
     df['unit_profit'] = 0  # 单件利润
@@ -474,13 +502,13 @@ def profit_calculator(df: pd.DataFrame):
     dfr = df.loc[~criteria, :].copy()
     dfl = df.loc[criteria, :].copy()
     # 进行新列间计算, 显式使用列名
-    dfr.loc[:, 'mean_actual_price'] = dfr.loc[:, 'sales'] / \
-        dfr.loc[:, 'sales_volume']
+    dfr.loc[:, 'mean_actual_price'] = \
+        dfr.loc[:, 'sales'] / dfr.loc[:, 'sales_volume']
     dfr.loc[:, 'unit_goss_profit'] = \
         dfr.loc[:, 'mean_actual_price'] - dfr.loc[:, 'unit_cost']
     dfr.loc[:, 'gross_profit'] = \
         dfr.loc[:, 'unit_goss_profit'] * dfr.loc[:, 'sales_volume']
-    dfr.loc[:, 'profit_rate'] = \
+    dfr.loc[:, 'gross_profit_rate'] = \
         dfr.loc[:, 'unit_goss_profit'] / dfr.loc[:, 'mean_actual_price']
     dfr.loc[:, 'actual_price_share'] = \
         dfr.loc[:, 'mean_actual_price'] * (1 - dfr.loc[:, '毛保'])
@@ -503,6 +531,7 @@ def profit_calculator(df: pd.DataFrame):
     dfr.loc[:, 'net_profit_rate'] = \
         dfr.loc[:, 'net_profit'] / dfr.loc[:, 'sales']
     df = pd.concat([dfl, dfr], ignore_index=True)
+    return df
 
 
 @assembly(AssemblyLines)
@@ -515,7 +544,7 @@ class ElementWiseProfitAssembly:
     @classmethod
     def assemble(cls):
         if not readiness(cls):
-            return None
+            return pd.DataFrame()
         i_col = list(cls.mc_item['data_frame'].columns)
         i_on = cls.mc_item['doc_ref']['key_pos'][0].split('|')[0]
         df = cls.element_wise_sales
@@ -526,8 +555,12 @@ class ElementWiseProfitAssembly:
                 columns = [col for col in s_col if col not in i_col]
                 columns.insert(0, i_on)
                 slave = slave.reindex(columns=columns)
-                df = pd.merge(df, slave, on=i_on, how='left')
+                df = pd.merge(df, slave, on=i_on, how='left', validate='many_to_one')
         df = profit_calculator(df)
+        item = cls.mc_item['doc_ref']['key_pos'][2].split('|')[0]
+        sku = cls.mc_item['doc_ref']['key_pos'][3].split('|')[0]
+        df = df.sort_values(by=sku, kind='mergesort', ignore_index=True)
+        df = df.sort_values(by=item, kind='mergesort', ignore_index=True)
         return df
 
 
@@ -542,7 +575,7 @@ class ItemWiseProfitAssembly:
     @classmethod
     def assemble(cls):
         if not readiness(cls):
-            return None
+            return pd.DataFrame()
         i_col = list(cls.mc_item['data_frame'].columns)
         i_on = cls.mc_item['doc_ref']['key_pos'][2].split('|')[0]
         df = cls.element_wise_sales
@@ -550,15 +583,17 @@ class ItemWiseProfitAssembly:
             slave = getattr(cls, attr)
             if isinstance(slave, pd.DataFrame) and re.match(r'^.+(?<!sales)$', attr):
                 s_col = slave.columns
-                if not attr.endswith('fee'):
-                    on = cls.mc_item['doc_ref']['key_pos'][0].split('|')[0]
-                else:
+                if attr.endswith('fee'):
                     on = i_on
+                else:
+                    on = cls.mc_item['doc_ref']['key_pos'][0].split('|')[0]
                 columns = [col for col in s_col if col not in i_col]
                 columns.insert(0, on)
                 slave = slave.reindex(columns=columns)
-                df = pd.merge(df, slave, on=i_on, how='left')
+                df = pd.merge(df, slave, on=on, how='left', validate='many_to_one')
         # -------------------------------------------------------------------------------
+        df = profit_calculator(df)
+        # 重新计算商品维度成本
         gp = df.groupby(by=i_on)
         df.loc[:, 'unit_cost'].fillna(0)
         df.loc[:, 'unit_cost'] = \
@@ -568,10 +603,30 @@ class ItemWiseProfitAssembly:
         df.loc[:, 'sales_volume'] = gp.sales_volume.transform(np.sum)
         df.loc[:, 'unit_cost'] = \
             df.loc[:, 'unit_cost'] / df.loc[:, 'sales_volume']
+        # 商品维度到手价
+        df.loc[:, 'mean_actual_price'] = \
+            df.loc[:, 'sales'] / df.loc[:, 'sales_volume']
+        # 商品维度毛利率
+        df.loc[:, 'unit_goss_profit'] = \
+            df.loc[:, 'mean_actual_price'] - df.loc[:, 'unit_cost']
+        df.loc[:, 'gross_profit'] = \
+            df.loc[:, 'unit_goss_profit'] * df.loc[:, 'sales_volume']
+        df.loc[:, 'gross_profit_rate'] = \
+            df.loc[:, 'unit_goss_profit'] / df.loc[:, 'mean_actual_price']
+        # 商品维度初算利润
+        df.loc[:, 'net_profit'] = gp.net_profit.transform(np.sum)
+        # 扣除推广费后的利润
+        df.loc[:, 'retained_profit'] = \
+            df.loc[:, 'net_profit'] - df.loc[:, 'accumulated_fee']
+        df.loc[:, 'retained_profit_rate'] = \
+            df.loc[:, 'retained_profit'] / df.loc[:, 'sales']
         df.loc[:, 'unit_cost'] = np.where(
             df['unit_cost'] == 0, np.nan, df['unit_cost'])
         df = df.drop_duplicates(subset=i_on, keep='first')
-        df = profit_calculator(df)
+        item = cls.mc_item['doc_ref']['key_pos'][2].split('|')[0]
+        sku = cls.mc_item['doc_ref']['key_pos'][3].split('|')[0]
+        df = df.sort_values(by=sku, kind='mergesort', ignore_index=True)
+        df = df.sort_values(by=item, kind='mergesort', ignore_index=True)
         return df
 
 
@@ -583,4 +638,45 @@ class FinalAssembly:
     @classmethod
     def assemble(cls):
         if not readiness(cls):
-            return None
+            return pd.DataFrame()
+        edf = cls.element_wise_profit_assembly
+        idf = cls.item_wise_profit_assembly
+        e_rdc = edf[edf['grouping'] == '寄售'].copy()
+        e_sjc = edf[edf['grouping'] == '商家仓'].copy()
+        i_rdc = idf[idf['grouping'] == '寄售'].copy()
+        i_sjc = idf[idf['grouping'] == '商家仓'].copy()
+        dfs = {'e_rdc': e_rdc, 'e_sjc': e_sjc, 'i_rdc': i_rdc, 'i_sjc': i_sjc, }
+        for _ in dfs:
+            df = dfs[_]
+            columns = df.columns.to_list()
+            multi_index = []
+            reindex = []
+            cate = 'element_visible' if _.startswith('e') else 'item_visible'
+            for i in st.FEATURE_PROPERTY:
+                feature = st.FEATURE_PROPERTY[i]
+                if (w := feature['floating_title']) in columns:
+                    priority = feature['priority']
+                    data_type = feature.get('data_type', 'float')
+                    visible = feature.get(cate, True)
+                    reindex.append(w)
+                    multi_index.append(
+                        (feature['name'], w, priority, data_type, visible)
+                    )
+            multi_index = pd.MultiIndex.from_tuples(
+                multi_index, names=['name', 'title', 'priority', 'data_type', 'visible'])
+            df = df.reindex(columns=reindex)
+            df.columns = multi_index
+            df.sort_index(axis=1, level='priority', inplace=True)
+            df = df.xs(True, level='visible', axis=1)
+            df.loc(axis=1)[:, :, :, 'str'] = df.loc(axis=1)[:, :, :, 'str'].astype('str')
+            df.loc(axis=1)[:, :, :, 'int'] = df.loc(axis=1)[:, :, :, 'int'].astype('int')
+            df.index = range(1, df.index.size + 1)
+            df.index.name = '序号'
+            dfs[_] = df
+        # --------------------------------------------------------------------------------
+        e_rdc = dfs['e_rdc']
+        e_sjc = dfs['e_sjc']
+        i_rdc = dfs['i_rdc']
+        i_sjc = dfs['i_sjc']
+        dft = namedtuple('final_assembly', ['RDC初算', 'SJC初算', 'RDC商品维度', 'SJC商品维度'])
+        return dft(e_rdc, e_sjc, i_rdc, i_sjc)

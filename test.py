@@ -13,19 +13,9 @@ import threading
 import pandas as pd
 
 
-dft = pd.DataFrame({"a": [1, 2, 3, 9, 9], "b": [4, 5, 6, 9, 9], "c": [
-                   '7', 'aaa', 'ccc', '9', '9']})
+ft = namedtuple('final_assembly', ['e_rdc', 'e_sjc', 'i_rdc', 'i_sjc'])
 
-df = dft.astype("string")
+aaa = ft(1, 2, 3, 9)
 
-aaa = 'ElementWiseCost'
-n = re.findall(r'[A-Z][a-z]+', aaa)
-print(n)
-m = re.split(r'(?<=[a-z])(?=[A-Z])', aaa)
-
-print(dft)
-
-gp = dft.groupby('a')
-ddd = gp.b.sum()
-
-print(ddd)
+for i in aaa._fields:
+    print(i)

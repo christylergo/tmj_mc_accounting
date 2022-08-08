@@ -22,8 +22,6 @@ if __name__ == '__main__':
         func(data)
     ripeness = raw_data
     DocumentIO.update_to_sqlite(ripeness)  # 最后更新文件信息,避免干扰读取
-    end = time.time()
-    print('**********', end - start, '***********')
     # ---------------------------------------------------------
     assembled_snippet = {}
     for _, line in AssemblyLines.items():
@@ -43,12 +41,16 @@ if __name__ == '__main__':
                 setattr(line, _, snippet)
         if not line.operated:
             df = line.assemble()
-            final_data[i] = df
+            if line.operated:
+                final_data[i] = df
 
-    line = AssemblyLines['final_assembly']
+    final_assembly = AssemblyLines['final_assembly']
     for _ in final_data:
-        df = assembled_snippet[_]
-        if hasattr(line, _):
-            setattr(line, _, df)
-    final_df = line.assemble()
+        df = final_data[_]
+        if hasattr(final_assembly, _):
+            setattr(final_assembly, _, df)
+    final_df = final_assembly.assemble()
+    end = time.time()
+    print('**********', end - start, '***********')
     styles.add_styles(final_df)
+
