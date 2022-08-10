@@ -12,9 +12,7 @@ if __name__ == '__main__':
     start = time.time()
     raw_data = multiprocessing_reader()
     end = time.time()
-    print('**********', end - start, '***********')
     # 对已读取的dataframe进行预处理
-    start = time.time()
     for data in raw_data:
         identity = data['identity']
         func = MiddlewareArsenal[identity]
@@ -51,6 +49,6 @@ if __name__ == '__main__':
             setattr(final_assembly, _, df)
     final_df = final_assembly.assemble()
     end = time.time()
-    print('**********', end - start, '***********')
+    print('\n***', end - start, '***\n')
     styles.add_styles(final_df)
 

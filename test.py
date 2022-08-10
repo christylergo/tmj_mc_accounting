@@ -13,9 +13,16 @@ import threading
 import pandas as pd
 
 
-ft = namedtuple('final_assembly', ['e_rdc', 'e_sjc', 'i_rdc', 'i_sjc'])
+df = pd.DataFrame({'A': ['one', 'one', 'two', 'three'] * 6,
+                   'B': ['A', 'B', 'C'] * 8,
+                   'C': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar'] * 4,
+                   'D': np.random.randn(24),
+                   'E': np.random.randn(24),
+                   'F': [datetime.datetime(2013, i, 1) for i in range(1, 13)]
+                   + [datetime.datetime(2013, i, 15) for i in range(1, 13)]})
 
-aaa = ft(1, 2, 3, 9)
-
-for i in aaa._fields:
-    print(i)
+print(df)
+df = df.set_index('C')
+print(df)
+df = pd.pivot_table(df, values='D', index=['A', 'B'],)
+print(df.reset_index())

@@ -41,7 +41,7 @@ def add_styles(dft: tuple):
         columns.extend(multi_column.get_level_values(0))
         d_type.extend(multi_column.get_level_values(3))
         columns_size = multi_column.size + 1
-        type_set = {'int': '0', 'str': '@', 'float': '0.00', '%': '0%'}
+        type_set = {'int': '0', 'str': '@', 'float': '0.00', '%': '0.0%'}
         a_upper = 65
         freeze_panes = [None, True]
         for ii in range(columns_size):
@@ -93,7 +93,7 @@ def add_styles(dft: tuple):
     # print(time.time() - old_time)
     # -----------------------------------
     add_data(dft, file_path)
-    # -----------------------------------
+# --------------------------------------------------------------------------
 
 
 def add_data(dft, file_path):
@@ -105,7 +105,6 @@ def add_data(dft, file_path):
     wb = app.books.open(file_path)
     for enum, df in enumerate(dft):
         ws = wb.sheets[enum]
-        print('********************', ws.name)
         df = dft[enum]
         df = df.droplevel(level=[1, 2, 3], axis=1)
         ws.range('A1').value = df
@@ -117,4 +116,4 @@ def add_data(dft, file_path):
     else:
         wb.close()
         app.quit()
-    print('------fulfill the task!------')
+    print('*' * 2**5, 'END', '*' * 2**5)

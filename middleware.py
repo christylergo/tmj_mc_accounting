@@ -12,6 +12,8 @@ from typing import Dict
 from typing import NamedTuple
 from typing import (List, Callable, Optional)
 import settings as st
+from profit_calculator import calculator
+from profit_calculator import prettier_sort
 
 """
 -*- 容器 -*-
@@ -169,6 +171,26 @@ def mc_time_series(data_ins) -> None:
 
 
 @assembly(MiddlewareArsenal)
+def daily_sales(data_ins):
+    interval = st.MC_SALES_INTERVAL
+    df, data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
+    col = data_ins['doc_ref']['key_pos'][1].split('|')[0]
+    cate = data_ins['doc_ref']['key_pos'][2].split('|')[0]
+    del data_ins['doc_ref']['key_pos'][2]
+    cate_col = [col, cate]
+    columns = df.columns.to_list()
+    columns.remove(cate)
+    cate_df = df.reindex(columns=cate_col).drop_duplicates(subset=col).copy()
+    df = df.reindex(columns=columns)
+    data_ins['data_frame'] = df
+    # --------------------------------
+    df = pivot_time_series(data_ins)
+    # --------------------------------
+    df = pd.merge(df, cate_df, on=col, how='left')
+    data_ins['data_frame'] = df
+
+
+@assembly(MiddlewareArsenal)
 def sjc_new_item(data_ins):
     data_ins['data_frame'] = data_ins['data_frame'].fillna('0')
     if data_ins['to_sql_df'] is not None:
@@ -177,17 +199,25 @@ def sjc_new_item(data_ins):
 
 @assembly(MiddlewareArsenal)
 def mc_category(data_ins):
-    data_ins['data_frame'] = data_ins['data_frame'].fillna(0)
+    df = data_ins['data_frame']
+    df = df.fillna(0)
+    df.iloc[:, 0] = df.iloc[:, 0].str.strip()
+    df.iloc[:, 1] = df.iloc[:, 1].str.strip()
+    data_ins['data_frame'] = df
 
 
 @assembly(MiddlewareArsenal)
 def mc_item(data_ins):
-    col = data_ins['doc_ref']['val_pos'][-1]
+    col = data_ins['doc_ref']['val_pos'][-1].split('|')[0]
     df = data_ins['data_frame'].copy()
+    df = df.dropna()
     df['grouping'] = df[col].str.split('-').str[1]
     # 排序之后主店排在前面, 之后drop duplicates指明keep=‘first’, 就可以优先保留主店信息
     df = df.sort_values(by='所属店铺', axis=0, kind='mergesort',
                         ignore_index=True, ascending=False)
+    col = data_ins['doc_ref']['val_pos'][1].split('|')[0]
+    criteria = ~df[col].str.startswith('VSKU')
+    df = df[criteria].copy()
     data_ins['data_frame'] = df
 
 
@@ -195,10 +225,13 @@ def mc_item(data_ins):
 def mc_base_info(data_ins):
     df = data_ins['data_frame']
     df.dropna(inplace=True)
-    col = data_ins['doc_ref']['val_pos'][0]
+    col = data_ins['doc_ref']['val_pos'][0].split('|')[0]
     df = df.set_index(col)
     criteria = ~df.index.str.contains('被替换')
-    data_ins['data_frame'] = df[criteria]
+    df = df[criteria]
+    df.iloc[:, 0] = df.iloc[:, 0].str.strip()
+    df.iloc[:, 1] = df.iloc[:, 1].str.strip()
+    data_ins['data_frame'] = df
 
 
 @assembly(MiddlewareArsenal)
@@ -296,7 +329,7 @@ data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': da
 def validate_attr(cls) -> bool:
     ready = True
     for attr in cls.__dict__:
-        if re.match(r'^(?!assemble)[^_].*[^_]$', attr):
+        if re.match(r'^(?!assemble)[^_].*[^_](?<!property)$', attr):
             attribute = getattr(cls, attr)
             if attribute is None:
                 raise ValueError(f'---{attr} is invalid!---')
@@ -370,11 +403,13 @@ class ElementWiseCost:
         sjc_item = item[item['grouping'] == '商家仓']
         rdc_item = item[item['grouping'] == '寄售']
         rdc_item = rdc_item.set_index(c[0])
+        base_info = base_info.set_index('供货价_base_info')
         rdc_item = pd.merge(rdc_item, base_info, on=i_on, how='left')
+        rdc_item.dropna(inplace=True)
         item = pd.concat([rdc_item, sjc_item], axis=0, ignore_index=True)
-        item.dropna(inplace=True)
         item = item.drop_duplicates()
         df = pd.merge(item, df, on=c[0], how='left')
+        # df = df[df['货品id'] == '642580733888']  # debug
         # 避免名称冲突导致的自动重命名
         atom = atom.rename({a[0]: c[2]}, axis=1)
         df = pd.merge(df, atom, on=c[2], how='left')
@@ -395,6 +430,7 @@ class ElementWiseParameter:
     sjc_new_item = None
     mc_item = None
     supply_price = None
+    mc_base_info = None
 
     @classmethod
     def assemble(cls) -> pd.DataFrame:
@@ -404,14 +440,20 @@ class ElementWiseParameter:
         sjc_sp = cls.sjc_new_item['data_frame']
         rdc_sp = cls.supply_price['data_frame']
         item = cls.mc_item['data_frame']
+        base = cls.mc_base_info['data_frame']
+        base_sp = base.reindex(columns=['货品id', '供货价_base_info']).copy()
+        base_sp.rename(columns={'供货价_base_info': '供货价'}, inplace=True)
         c_on = list_map(cls.mc_category['doc_ref']['key_pos'][0:2])
         sjc_on = list_map(cls.sjc_new_item['doc_ref']['key_pos'][0:2])
         rdc_on = cls.supply_price['doc_ref']['key_pos'][1].split('|')[0]
-        sjc = pd.merge(item, sjc_sp, on=sjc_on, how='inner')
-        rdc = pd.merge(item, rdc_sp, on=rdc_on, how='inner')
-        df = pd.concat([sjc, rdc], ignore_index=True)
+        sjc = pd.merge(item, sjc_sp, on=sjc_on, how='left')
+        rdc_b = pd.merge(item, base_sp, on=rdc_on, how='left')
+        rdc = pd.merge(item, rdc_sp, on=rdc_on, how='left')
+        df = pd.concat([sjc, rdc_b, rdc], ignore_index=True)
+        df = df.fillna(0).sort_values(by='供货价')
         df.drop_duplicates(subset=sjc_on, keep='last', inplace=True)
         df = pd.merge(df, category, on=c_on, how='inner')
+        # debug = df[df['货品id'] == '642580733888']  # debug
         df.drop_duplicates(subset=i_on, inplace=True, keep='first')
         val = cls.supply_price['doc_ref']['val_pos'][0].split('|')[0]
         df.loc[:, val] = df.loc[:, val].astype('float')
@@ -478,65 +520,10 @@ class ItemWisePromotionFee:
         return df
 
 
-def profit_calculator(df: pd.DataFrame):
-    # 添加结算列, 显式定义这些列比较直观
-    df['mean_actual_price'] = 0
-    df['unit_goss_profit'] = 0
-    df['gross_profit'] = 0
-    df['gross_profit_rate'] = 0
-    df['actual_price_share'] = 0
-    df['retained_price_share'] = 0
-    df['unit_profit'] = 0  # 单件利润
-    df['unit_platform_profit'] = 0
-    df['unit_guaranteed_profit_variance'] = 0
-    df['guaranteed_profit_variance'] = 0
-    df['net_profit'] = 0  # 初算利润
-    df['net_profit_rate'] = 0
-    df['retained_profit'] = 0
-    df['retained_profit_rate'] = 0
-    # ---------------------------------------
-    criteria = df.isna().any(axis=1)
-    if criteria.any():
-        warnings.warn('***unexpected nan! ***')
-        print(df.head())
-    dfr = df.loc[~criteria, :].copy()
-    dfl = df.loc[criteria, :].copy()
-    # 进行新列间计算, 显式使用列名
-    dfr.loc[:, 'mean_actual_price'] = \
-        dfr.loc[:, 'sales'] / dfr.loc[:, 'sales_volume']
-    dfr.loc[:, 'unit_goss_profit'] = \
-        dfr.loc[:, 'mean_actual_price'] - dfr.loc[:, 'unit_cost']
-    dfr.loc[:, 'gross_profit'] = \
-        dfr.loc[:, 'unit_goss_profit'] * dfr.loc[:, 'sales_volume']
-    dfr.loc[:, 'gross_profit_rate'] = \
-        dfr.loc[:, 'unit_goss_profit'] / dfr.loc[:, 'mean_actual_price']
-    dfr.loc[:, 'actual_price_share'] = \
-        dfr.loc[:, 'mean_actual_price'] * (1 - dfr.loc[:, '毛保'])
-    criteria = dfr.loc[:, 'actual_price_share'] >= dfr.loc[:, '供货价']
-    dfr.loc[:, 'retained_price_share'] = np.where(
-        criteria, dfr.loc[:, '供货价'], dfr.loc[:, 'actual_price_share'])
-    medium = dfr.loc[:, 'retained_price_share'] - \
-        dfr.loc[:, '供货价'] * (dfr.loc[:, '运费'] + dfr.loc[:, '渠道推广服务费'])
-    dfr.loc[:, 'unit_profit'] = medium - dfr.loc[:, 'unit_cost']
-    dfr.loc[:, 'unit_platform_profit'] = \
-        dfr.loc[:, 'mean_actual_price'] - \
-        dfr.loc[:, 'retained_price_share']
-    dfr.loc[:, 'unit_guaranteed_profit_variance'] = \
-        dfr.loc[:, 'actual_price_share'] - dfr.loc[:, '供货价']
-    dfr.loc[:, 'guaranteed_profit_variance'] = \
-        dfr.loc[:, 'unit_guaranteed_profit_variance'] * \
-        dfr.loc[:, 'sales_volume']
-    dfr.loc[:, 'net_profit'] = dfr.loc[:, 'unit_profit'] * \
-        dfr.loc[:, 'sales_volume']
-    dfr.loc[:, 'net_profit_rate'] = \
-        dfr.loc[:, 'net_profit'] / dfr.loc[:, 'sales']
-    df = pd.concat([dfl, dfr], ignore_index=True)
-    return df
-
-
 @assembly(AssemblyLines)
 class ElementWiseProfitAssembly:
     mc_item = None
+    feature_property = st.FEATURE_PROPERTY
     element_wise_cost = pd.DataFrame()
     element_wise_parameter = pd.DataFrame()
     element_wise_sales = pd.DataFrame()
@@ -556,17 +543,15 @@ class ElementWiseProfitAssembly:
                 columns.insert(0, i_on)
                 slave = slave.reindex(columns=columns)
                 df = pd.merge(df, slave, on=i_on, how='left', validate='many_to_one')
-        df = profit_calculator(df)
-        item = cls.mc_item['doc_ref']['key_pos'][2].split('|')[0]
-        sku = cls.mc_item['doc_ref']['key_pos'][3].split('|')[0]
-        df = df.sort_values(by=sku, kind='mergesort', ignore_index=True)
-        df = df.sort_values(by=item, kind='mergesort', ignore_index=True)
+        df = calculator(df)
+        df = prettier_sort(cls, df)
         return df
 
 
 @assembly(AssemblyLines)
 class ItemWiseProfitAssembly:
     mc_item = None
+    feature_property = st.FEATURE_PROPERTY
     item_wise_promotion_fee = pd.DataFrame()
     element_wise_cost = pd.DataFrame()
     element_wise_parameter = pd.DataFrame()
@@ -592,7 +577,8 @@ class ItemWiseProfitAssembly:
                 slave = slave.reindex(columns=columns)
                 df = pd.merge(df, slave, on=on, how='left', validate='many_to_one')
         # -------------------------------------------------------------------------------
-        df = profit_calculator(df)
+        df = calculator(df)
+        df = prettier_sort(cls, df)
         # 重新计算商品维度成本
         gp = df.groupby(by=i_on)
         df.loc[:, 'unit_cost'].fillna(0)
@@ -613,6 +599,8 @@ class ItemWiseProfitAssembly:
             df.loc[:, 'unit_goss_profit'] * df.loc[:, 'sales_volume']
         df.loc[:, 'gross_profit_rate'] = \
             df.loc[:, 'unit_goss_profit'] / df.loc[:, 'mean_actual_price']
+        # 类目均衡返还
+        df.loc[:, 'auxiliary'] = gp.auxiliary.transform(np.sum)
         # 商品维度初算利润
         df.loc[:, 'net_profit'] = gp.net_profit.transform(np.sum)
         # 扣除推广费后的利润
@@ -623,10 +611,6 @@ class ItemWiseProfitAssembly:
         df.loc[:, 'unit_cost'] = np.where(
             df['unit_cost'] == 0, np.nan, df['unit_cost'])
         df = df.drop_duplicates(subset=i_on, keep='first')
-        item = cls.mc_item['doc_ref']['key_pos'][2].split('|')[0]
-        sku = cls.mc_item['doc_ref']['key_pos'][3].split('|')[0]
-        df = df.sort_values(by=sku, kind='mergesort', ignore_index=True)
-        df = df.sort_values(by=item, kind='mergesort', ignore_index=True)
         return df
 
 
