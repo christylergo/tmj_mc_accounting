@@ -450,7 +450,9 @@ class ElementWiseParameter:
         rdc_b = pd.merge(item, base_sp, on=rdc_on, how='left')
         rdc = pd.merge(item, rdc_sp, on=rdc_on, how='left')
         df = pd.concat([sjc, rdc_b, rdc], ignore_index=True)
-        df = df.fillna(0).sort_values(by='供货价')
+        df = df.fillna(0)
+        df.loc[:, '供货价'] = df.loc[:, '供货价'].astype('float')
+        df = df.sort_values(by='供货价')
         df.drop_duplicates(subset=sjc_on, keep='last', inplace=True)
         df = pd.merge(df, category, on=c_on, how='inner')
         # debug = df[df['货品id'] == '642580733888']  # debug

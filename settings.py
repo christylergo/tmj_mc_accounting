@@ -20,10 +20,8 @@ DOCS_PATH = 'mc_docs'
 CODE_PATH = 'tmj_mc_accounting'
 # 生成文件后保存路径
 FILE_GENERATED_PATH = ''
-# 多sheets读取范围
-MULTI_SHEETS_SLICE = r'\u65b0\u54c1|\u5BC4\u552E|\u5546\u5BB6\u4ED3'
 # xlsx转csv文件size触发阈值
-XLSX_TO_CSV_THRESHOLD = 2 ** 19
+XLSX_TO_CSV_THRESHOLD = 2 ** 29
 # 给sys.stdout添加中间件, 使用utf8编解码, 替代windows系统中的GBK
 # sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
@@ -32,8 +30,9 @@ XLSX_TO_CSV_THRESHOLD = 2 ** 19
 默认不自动换行, 默认居中, 默认不加粗
 """
 FEATURE_PROPERTY = {
-    'row_nu': {'priority': 0, 'name': '序号', 'width': 5, 'data_type': 'int',
-               'floating_title': 'row_nu', },
+    'row_nu': {
+        'priority': 0, 'name': '序号', 'width': 5, 'data_type': 'int',
+        'floating_title': 'row_nu', },
     # 分组, 寄售 | 商家仓
     'group': {
         'priority': 1, 'name': '分组', 'width': 5, 'data_type': 'str', 'floating_title': 'grouping',
@@ -240,10 +239,11 @@ if len(args) == 1:
 elif len(args) == 2 and re.match(r'^-+LM$', args[1], re.IGNORECASE):
     tail = datetime.date(tt.tm_year, tt.tm_mon, 1) - datetime.timedelta(days=1)
     head = datetime.date(tt.tm_year, tail.timetuple().tm_mon, 1)
-elif len(args) == 4 and re.match(r'^-+i(_\d\d?\.\d\d?){2}$', str.join('_', args[1:]), re.I):
+elif len(args) == 4 and re.match(r'^-+i(_\d\d?[\./-]\d\d?){2}$', str.join('_', args[1:]), re.I):
     try:
-        head = datetime.date(tt.tm_year, args[2].split('.')[0], args[2].split('.')[1])
-        tail = datetime.date(tt.tm_year, args[3].split('.')[0], args[3].split('.')[1])
+        separator = re.findall(r'(?=\d)[\./-](?=\d)')[0]
+        head = datetime.date(tt.tm_year, args[2].split(separator)[0], args[2].split(separator)[1])
+        tail = datetime.date(tt.tm_year, args[3].split(separator)[0], args[3].split(separator)[1])
     except:
         raise ValueError('------日期数值错误！------')
     if head > tail:
