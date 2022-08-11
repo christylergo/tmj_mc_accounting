@@ -21,7 +21,7 @@ CODE_PATH = 'tmj_mc_accounting'
 # 生成文件后保存路径
 FILE_GENERATED_PATH = ''
 # xlsx转csv文件size触发阈值
-XLSX_TO_CSV_THRESHOLD = 2 ** 29
+XLSX_TO_CSV_THRESHOLD = 2 ** 19
 # 给sys.stdout添加中间件, 使用utf8编解码, 替代windows系统中的GBK
 # sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
@@ -88,14 +88,14 @@ FEATURE_PROPERTY = {
     # 平均到手价
     'mean_actual_price': {'priority': 17, 'name': '平均到手价', 'floating_title': 'mean_actual_price', },
     # 单件毛利
-    'unit_goss_profit': {'priority': 18, 'name': '单件毛利', 'floating_title': 'unit_goss_profit', },
+    'unit_goss_profit': {'priority': 18, 'name': '扣点前单件毛利', 'floating_title': 'unit_goss_profit', },
     # 毛利
     'gross_profit': {
-        'priority': 19, 'name': '毛利', 'width': 9, 'floating_title': 'gross_profit',
+        'priority': 19, 'name': '扣点前毛利', 'width': 9, 'floating_title': 'gross_profit',
         'data_type': 'int', },
     # 毛利率
     'gross_profit_rate': {
-        'priority': 20, 'name': '毛利率', 'floating_title': 'gross_profit_rate',
+        'priority': 20, 'name': '扣点前毛利率', 'floating_title': 'gross_profit_rate',
         'width': 7, 'data_type': '%', 'element_visible': True, },
     # 到手价扣毛保
     'actual_price_share': {
@@ -129,30 +129,36 @@ FEATURE_PROPERTY = {
         'width': 7, 'data_type': '%', 'bold': True, },
     # 直通车
     'zhi_tong_che': {
-        'priority': 29, 'name': '直通车', 'width': 9,
+        'priority': 29, 'name': '直通车', 'width': 7, 'data_type': 'int', 
         'floating_title': 'zhi_tong_che', 'element_visible': False, },
+    'yin_li_mo_fang': {
+        'priority': 30, 'name': '引力魔方', 'data_type': 'int', 
+        'floating_title': 'yin_li_mo_fang', 'element_visible': False, },
+    'wan_xiang_tai': {
+        'priority': 31, 'name': '万向台', 'data_type': 'int',
+        'floating_title': 'wan_xiang_tai', 'element_visible': False, },
     # 淘客
     'tao_ke': {
-        'priority': 30, 'name': '淘客', 'floating_title': 'tao_ke',
-        'width': 9, 'element_visible': False, },
+        'priority': 32, 'name': '淘客', 'floating_title': 'tao_ke',
+        'element_visible': False, 'data_type': 'int', },
     # 猫超卡
     'mao_chao_ka': {
-        'priority': 31, 'name': '猫超卡', 'floating_title': 'mao_chao_ka',
-        'width': 9, 'element_visible': False, },
+        'priority': 33, 'name': '猫超卡', 'floating_title': 'mao_chao_ka',
+        'element_visible': False, 'data_type': 'int', },
     # 其他
-    'other_cost': {
-        'priority': 32, 'name': '其他费用', 'floating_title': 'other_cost',
-        'width': 9, 'element_visible': False, },
+    'fu_dai': {
+        'priority': 34, 'name': '福袋', 'floating_title': 'fu_dai',
+        'element_visible': False, 'data_type': 'int', },
     # 扣费后利润
     'retained_profit': {
-        'priority': 33, 'name': '扣费后利润', 'bold': True, 'width': 9, 'floating_title': 'retained_profit',
+        'priority': 35, 'name': '扣费后利润', 'bold': True, 'width': 9, 'floating_title': 'retained_profit',
         'element_visible': False, 'data_type': 'int', },
     # 扣费后利润率
     'retained_profit_rate': {
-        'priority': 34, 'name': '扣费后利润率', 'floating_title': 'retained_profit_rate',
+        'priority': 36, 'name': '扣费后利润率', 'floating_title': 'retained_profit_rate',
         'width': 7, 'data_type': '%', 'element_visible': False, 'bold': True, },
     'auxiliary': {
-        'priority': 35, 'name': '类目均衡返还', 'floating_title': 'auxiliary',
+        'priority': 37, 'name': '类目均衡返还', 'floating_title': 'auxiliary',
         'width': 9, 'data_type': 'int', 'bold': True, },
 }
 
@@ -207,9 +213,14 @@ DOC_REFERENCE = {
         'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
     },
+    'fu_dai': {
+        'key_words': '超市福袋|福袋', 'key_pos': ['日期|业务时间', '商品id', ],
+        'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
+    },
     'tao_ke': {
-        'key_words': '淘客', 'key_pos': ['日期|数据时间', '商品id', ],
-        'val_pos': ['结算佣金', '付款服务费', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
+        'key_words': '淘客', 'key_pos': ['日期|业务时间', '商品id', ],
+        'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ],
     },
     'wan_xiang_tai': {

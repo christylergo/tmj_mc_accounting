@@ -129,7 +129,6 @@ class DocumentIO:
     def fit_file(self) -> None:
         file_name = []
         read_doc = False
-        xlsx_file = []
         for file in self.files:  # files是类属性,全部文件夹中的文件信息列表
             if file['identity'] == self.identity:
                 self.switch = True

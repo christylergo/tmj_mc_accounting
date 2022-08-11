@@ -36,6 +36,7 @@ def xlsx_to_csv(file_name: list, csv_path):
     then convert the file into csv
     return the converted csv file's path
     """
+    # client.gencache.EnsureDispatch('Excel.Application')
     excel = client.Dispatch('Excel.Application')
     excel.Visible = False
     csv_file = []

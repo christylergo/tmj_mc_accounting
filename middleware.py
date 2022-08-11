@@ -87,7 +87,7 @@ def convert_date_type(data_ins):
     # pandas的text数据方法只能用于series
     for col in key_pos:
         df.loc[:, col] = df.loc[:, col].astype(
-            'string').str.replace(r'\.0+$|^=\"|\"$', '', regex=True)
+            'string').str.replace(r"\.0+$|^=\"|\"$|^'", '', regex=True)
 
 
 def rectify_time_series(data_ins, interval):
@@ -209,13 +209,14 @@ def mc_category(data_ins):
 @assembly(MiddlewareArsenal)
 def mc_item(data_ins):
     col = data_ins['doc_ref']['val_pos'][-1].split('|')[0]
-    df = data_ins['data_frame'].copy()
-    df = df.dropna()
+    df = data_ins['data_frame']
+    df.dropna(inplace=True)
+    df = df.copy()
     df['grouping'] = df[col].str.split('-').str[1]
     # 排序之后主店排在前面, 之后drop duplicates指明keep=‘first’, 就可以优先保留主店信息
     df = df.sort_values(by='所属店铺', axis=0, kind='mergesort',
                         ignore_index=True, ascending=False)
-    col = data_ins['doc_ref']['val_pos'][1].split('|')[0]
+    col = data_ins['doc_ref']['key_pos'][1].split('|')[0]
     criteria = ~df[col].str.startswith('VSKU')
     df = df[criteria].copy()
     data_ins['data_frame'] = df
@@ -274,20 +275,20 @@ def supply_price(data_ins):
     data_ins['data_frame'] = df
 
 
-@assembly(MiddlewareArsenal)
-def tao_ke(data_ins):
-    """
-    淘客费用表有两列不同费用数据, 先合并在一起方便之后计算
-    """
-    df = data_ins['data_frame']
-    val = list_map(data_ins['doc_ref']['val_pos'])
-    df.loc[:, val[0]] = df[val[0]] + df[val[1]]
-    col = [
-        data_ins['doc_ref']['key_pos'][1].split('|')[0],
-        data_ins['identity'],
-    ]
-    df = df.reindex(columns=col)
-    data_ins['data_frame'] = df
+# @assembly(MiddlewareArsenal)
+# def tao_ke(data_ins):
+#     """
+#     淘客导出数据有变化, 不需要这些操作
+#     """
+#     df = data_ins['data_frame']
+#     val = list_map(data_ins['doc_ref']['val_pos'])
+#     df.loc[:, val[0]] = df[val[0]] + df[val[1]]
+#     col = [
+#         data_ins['doc_ref']['key_pos'][1].split('|')[0],
+#         data_ins['identity'],
+#     ]
+#     df = df.reindex(columns=col)
+#     data_ins['data_frame'] = df
 
 
 @assembly(MiddlewareArsenal)
@@ -316,7 +317,7 @@ def pre_func_interface(data_ins):
 
 """
 -*- 容器 -*-
-各个dataframe之间的整合所需的加工函数在此类的内部类中定义.
+各个dataframe之间的整合所需的加工函数在类的内部定义.
 dataframe之间有主、从的区分, 1主单/多从的方式调用.
 主从索引都是identity, 通过内部类的类属性来定义操作method的实参
 所有的内部类的操作method统一命名为assemble, 因此内部类的method定义为class method会更方便调用.
@@ -396,6 +397,7 @@ class ElementWiseCost:
         atom = cls.tmj_atom['data_frame']
         base_info = cls.mc_base_info['data_frame']
         item = cls.mc_item['data_frame']
+        item = item.drop_duplicates(subset=i_on, keep='first')
         mapping = [(c[0], a[0]), (c[1], a[0]), (c[2], a[0]), (c[3], np.nan), ]
         df = combine_df(combination, atom, mapping)
         df.drop_duplicates(inplace=True)
@@ -446,17 +448,18 @@ class ElementWiseParameter:
         c_on = list_map(cls.mc_category['doc_ref']['key_pos'][0:2])
         sjc_on = list_map(cls.sjc_new_item['doc_ref']['key_pos'][0:2])
         rdc_on = cls.supply_price['doc_ref']['key_pos'][1].split('|')[0]
+        item = item.drop_duplicates(subset=i_on, keep='first')
         sjc = pd.merge(item, sjc_sp, on=sjc_on, how='left')
         rdc_b = pd.merge(item, base_sp, on=rdc_on, how='left')
         rdc = pd.merge(item, rdc_sp, on=rdc_on, how='left')
         df = pd.concat([sjc, rdc_b, rdc], ignore_index=True)
-        df = df.fillna(0)
         df.loc[:, '供货价'] = df.loc[:, '供货价'].astype('float')
-        df = df.sort_values(by='供货价')
-        df.drop_duplicates(subset=sjc_on, keep='last', inplace=True)
+        df = df.sort_values(by='供货价', na_position='first')
+        # debug = df[df['商品id'] == '641486140935']  # debug
+        # 设定inplace=True就会使得前面的排序无效, 因为排序结果是视图
+        df = df.drop_duplicates(subset=sjc_on, keep='last')
         df = pd.merge(df, category, on=c_on, how='inner')
-        # debug = df[df['货品id'] == '642580733888']  # debug
-        df.drop_duplicates(subset=i_on, inplace=True, keep='first')
+        df = df.drop_duplicates(subset=i_on, keep='first')
         val = cls.supply_price['doc_ref']['val_pos'][0].split('|')[0]
         df.loc[:, val] = df.loc[:, val].astype('float')
         return df
@@ -497,6 +500,7 @@ class ItemWisePromotionFee:
     匹配每个商品sku的毛保/类目/扣点/供价等parameter
     """
     mao_chao_ka = None
+    fu_dai = None
     tao_ke = None
     wan_xiang_tai = None
     yin_li_mo_fang = None
@@ -516,7 +520,10 @@ class ItemWisePromotionFee:
                 slave = attribute['data_frame']
                 df = pd.merge(df, slave, on=i_on, how='left')
         df = df.fillna(value=0)
-        df['other_cost'] = df['yin_li_mo_fang'] + df['wan_xiang_tai']
+        accumulated_fee.insert(0, i_on)
+        df = df.reindex(columns=accumulated_fee)
+        accumulated_fee.remove(i_on)
+        # df['other_cost'] = df['yin_li_mo_fang'] + df['wan_xiang_tai']
         df['accumulated_fee'] = df[accumulated_fee].agg(np.sum, axis=1)
         df = df.drop_duplicates(subset=i_on, keep='first')
         return df
