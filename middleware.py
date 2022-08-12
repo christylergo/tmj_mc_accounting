@@ -275,20 +275,20 @@ def supply_price(data_ins):
     data_ins['data_frame'] = df
 
 
-# @assembly(MiddlewareArsenal)
-# def tao_ke(data_ins):
-#     """
-#     淘客导出数据有变化, 不需要这些操作
-#     """
-#     df = data_ins['data_frame']
-#     val = list_map(data_ins['doc_ref']['val_pos'])
-#     df.loc[:, val[0]] = df[val[0]] + df[val[1]]
-#     col = [
-#         data_ins['doc_ref']['key_pos'][1].split('|')[0],
-#         data_ins['identity'],
-#     ]
-#     df = df.reindex(columns=col)
-#     data_ins['data_frame'] = df
+@assembly(MiddlewareArsenal)
+def tao_ke_raw(data_ins):
+    """
+    淘客导出数据有变化, 不需要这些操作
+    """
+    df = data_ins['data_frame']
+    val = list_map(data_ins['doc_ref']['val_pos'])
+    df.loc[:, val[0]] = df[val[0]] + df[val[1]]
+    col = [
+        data_ins['doc_ref']['key_pos'][1].split('|')[0],
+        val[0],
+    ]
+    df = df.reindex(columns=col)
+    data_ins['data_frame'] = df
 
 
 @assembly(MiddlewareArsenal)
@@ -502,6 +502,7 @@ class ItemWisePromotionFee:
     mao_chao_ka = None
     fu_dai = None
     tao_ke = None
+    tao_ke_raw = None
     wan_xiang_tai = None
     yin_li_mo_fang = None
     zhi_tong_che = None
@@ -521,6 +522,12 @@ class ItemWisePromotionFee:
                 df = pd.merge(df, slave, on=i_on, how='left')
         df = df.fillna(value=0)
         accumulated_fee.insert(0, i_on)
+        # 选择淘客数据来源
+        if st.CURRENT:
+            accumulated_fee.remove('tao_ke')
+        else:
+            accumulated_fee.remove('tao_ke_raw')
+        # ----------------------
         df = df.reindex(columns=accumulated_fee)
         accumulated_fee.remove(i_on)
         # df['other_cost'] = df['yin_li_mo_fang'] + df['wan_xiang_tai']

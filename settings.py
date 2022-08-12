@@ -14,6 +14,8 @@ SHOW_DOC_AFTER_GENERATED = True
 MC_SALES_INTERVAL = 160
 # 默认采用销售日报数据, 设置为False则默认采用天机销售数据
 DAILY_SALES = True
+# 对当月进行核算
+CURRENT = False
 # 网上导出数据文件夹路径
 DOCS_PATH = 'mc_docs'
 # 代码文件夹路径
@@ -141,6 +143,10 @@ FEATURE_PROPERTY = {
     'tao_ke': {
         'priority': 32, 'name': '淘客', 'floating_title': 'tao_ke',
         'element_visible': False, 'data_type': 'int', },
+    # 淘客活动中心导出数据
+    'tao_ke_raw': {
+        'priority': 32, 'name': '淘客', 'floating_title': 'tao_ke_raw',
+        'element_visible': False, 'data_type': 'int', },
     # 猫超卡
     'mao_chao_ka': {
         'priority': 33, 'name': '猫超卡', 'floating_title': 'mao_chao_ka',
@@ -219,8 +225,13 @@ DOC_REFERENCE = {
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
     },
     'tao_ke': {
-        'key_words': '淘客', 'key_pos': ['日期|业务时间', '商品id', ],
+        'key_words': r'淘客.*\\(?!export)[^\\]*$', 'key_pos': ['日期|业务时间', '商品id', ],
         'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ],
+    },
+    'tao_ke_raw': {
+        'key_words': r'淘客.*\\(?=export)[^\\]*$', 'key_pos': ['日期|数据时间', '商品id', ],
+        'val_pos': ['结算佣金', '付款服务费', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ],
     },
     'wan_xiang_tai': {
@@ -240,13 +251,19 @@ DOC_REFERENCE = {
     },
 }
 
-args = sys.argv
+args = sys.argv.copy()
 today = datetime.date.today()
 tt = today.timetuple()
 interval = namedtuple('interval', ('head', 'tail'))
+for i in args[1:]:
+    if re.match(r'-+pre', i, re.I):
+        CURRENT = True
+        args.remove(i)
 if len(args) == 1:
     head = today - datetime.timedelta(days=MC_SALES_INTERVAL)
     tail = today - datetime.timedelta(days=1)
+    if CURRENT:
+        head = datetime.date(tt.tm_year, tail.timetuple().tm_mon, 1)
 elif len(args) == 2 and re.match(r'^-+LM$', args[1], re.IGNORECASE):
     tail = datetime.date(tt.tm_year, tt.tm_mon, 1) - datetime.timedelta(days=1)
     head = datetime.date(tt.tm_year, tail.timetuple().tm_mon, 1)
