@@ -51,7 +51,7 @@ def calculator(df: pd.DataFrame):
         dfr.loc[:, 'unit_guaranteed_profit_variance'] * \
         dfr.loc[:, 'sales_volume']
     # -------------------类目均衡毛保补差--------------------------
-    gpr = dfr.groupby(by='自主分类')
+    gpr = dfr.groupby(by='四级类目名称')
     n_coefficient = np.where(dfr['guaranteed_profit_variance'] < 0, -1, 0)
     p_coefficient = np.where(dfr['guaranteed_profit_variance'] >= 0, 1, 0)
     dfr.loc[:, 'auxiliary'] = gpr.guaranteed_profit_variance.transform(np.sum)
