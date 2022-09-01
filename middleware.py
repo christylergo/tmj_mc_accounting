@@ -243,7 +243,9 @@ def tmj_atom(data_ins):
     df = data_ins['data_frame']
     if df.duplicated(keep=False).any():
         raise ValueError('---单品明细表格中有重复数据!---')
-    df.drop_duplicates(inplace=True)
+    df.drop_duplicates()
+    df.loc[:, '主条码'] = np.where(df['主条码'].isna(), df['商家编码'], df['主条码'])
+    data_ins['data_frame'] = df
 
 
 @assembly(MiddlewareArsenal)
@@ -351,14 +353,15 @@ readiness = validate_attr
 def combine_df(master=None, slave=None, mapping=None) -> Optional[pd.DataFrame]:
     if mapping is None:
         return None
-    slave_copy = pd.DataFrame(columns=master.columns.to_list())
+    master = master.reindex(columns=[xx[0] for xx in mapping])
+    slave_copy = pd.DataFrame(columns=master.columns)
     for xx in mapping:
         if xx[1] is np.nan:
             slave_copy.loc[:, xx[0]] = np.nan
         else:
             slave_copy.loc[:, xx[0]] = slave.loc[:, xx[1]]
     df = pd.concat([master, slave_copy], ignore_index=True)
-    df.fillna(value=1, inplace=True)
+    # df.fillna(value=1, inplace=True)
     return df
 
 
@@ -398,8 +401,17 @@ class ElementWiseCost:
         base_info = cls.mc_base_info['data_frame']
         item = cls.mc_item['data_frame']
         item = item.drop_duplicates(subset=i_on, keep='first')
-        mapping = [(c[0], a[0]), (c[1], a[0]), (c[2], a[0]), (c[3], np.nan), ]
-        df = combine_df(combination, atom, mapping)
+        # -------------------------------------------------------
+        mdf = pd.merge(combination, atom, left_on=c[2], right_on=c[0], how='inner', suffixes=('', '_atom'))
+        mdf.loc[:, a[-1]] = mdf.loc[:, a[-1]] * mdf.loc[:, c[-1]]
+        mdf.loc[:, a[-1]] = mdf.groupby(by=c[0])[a[-1]].transform(np.sum)
+        mdf = mdf.drop_duplicates(subset=c[0])
+        atom = pd.merge(atom, mdf, left_on=a[1], right_on=a[0], suffixes=('', '_mdf'), how='left')
+        atom.loc[:, a[2]] = np.where(atom[a[2] + '_mdf'].isna(), atom[a[2]], atom[a[2] + '_mdf'])
+        atom = atom.reindex(columns=a)
+        # -------------------------------------------------------
+        mapping = [(c[0], a[0]), (c[1], a[0]), (c[2], a[0]), (a[2], a[2]), ]
+        df = combine_df(mdf, atom, mapping)
         df.drop_duplicates(inplace=True)
         # 把rdc中的mc条码替换成tmj的组合装条码
         sjc_item = item[item['grouping'] == '商家仓']
@@ -411,15 +423,8 @@ class ElementWiseCost:
         item = pd.concat([rdc_item, sjc_item], axis=0, ignore_index=True)
         item = item.drop_duplicates()
         df = pd.merge(item, df, on=c[0], how='left')
-        # df = df[df['货品id'] == '642580733888']  # debug
-        # 避免名称冲突导致的自动重命名
-        atom = atom.rename({a[0]: c[2]}, axis=1)
-        df = pd.merge(df, atom, on=c[2], how='left')
-        df.dropna(subset=c[2], inplace=True)
-        df['unit_cost'] = df[a[-1]] * df[c[-1]]
-        gp = df.groupby(by=c[0])
-        df['unit_cost'] = gp.unit_cost.transform(np.sum)
         df.drop_duplicates(subset=i_on, inplace=True, keep='first')
+        df = df.rename(columns={a[2]: 'unit_cost'})
         return df
 
 

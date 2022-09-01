@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import time
-import random
+import uuid
 import win32api
 import win32con
 from win32com import client
@@ -41,8 +41,9 @@ def xlsx_to_csv(file_name: list, csv_path):
     excel.Visible = False
     csv_file = []
     for f in file_name:
-        # 随机命名csv避免名称重复
-        repl = str(id(f)) + str(random.randrange(0, 10000)) + '.csv'
+        # 使用UUID.int命名csv避免名称重复, 纯数字的名称可以用于区分
+        # xlsx转换的csv编码是gb2312, 一般导出的csv编码是大多是utf-8
+        repl = str(uuid.uuid1().int) + '.csv'
         csv_f = os.path.join(csv_path, repl)
         wb = excel.Workbooks.Open(f)
         if wb.Sheets.Count > 1:

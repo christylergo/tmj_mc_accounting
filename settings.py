@@ -25,7 +25,8 @@ FILE_GENERATED_PATH = ''
 # xlsx转csv文件size触发阈值
 XLSX_TO_CSV_THRESHOLD = 2 ** 19
 # 给sys.stdout添加中间件, 使用utf8编解码, 替代windows系统中的GBK
-# sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 """
 列显示优先级数值越小越靠前, 默认True可见, False表示不显示, 列宽默认6, 默认数据类型float/General,
@@ -174,7 +175,7 @@ FEATURE_PROPERTY = {
 """
 DOC_REFERENCE = {
     'tmj_atom': {
-        'key_words': '单品明细', 'key_pos': ['商家编码', ],
+        'key_words': '单品明细', 'key_pos': ['商家编码', '主条码'],
         'val_pos': ['会员价', ], 'val_type': ['REAL', ], 'importance': 'required',
     },
     'tmj_combination': {

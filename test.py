@@ -11,6 +11,7 @@ from collections import namedtuple
 import multiprocessing
 import threading
 import pandas as pd
+from tensorflow import keras
 
 
 df = pd.DataFrame({'A': ['one', 'one', 'two', 'three'] * 6,
