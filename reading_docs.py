@@ -153,8 +153,12 @@ class DocumentIO:
             matched_excel = re.match(r'^.*\.xlsx?$', file)
             if matched_csv:
                 # xlsx转换成csv编码格式是gb2312, 读取时需要特别指定, pandas默认的是utf-8
-                encoding = 'gb2312' if re.match(r'^.+\\\d+\.csv$', file) else 'utf-8'
-                one_df = pd.read_csv(file, usecols=lambda col: col in pd_cols, encoding=encoding)
+                try:
+                    encoding = 'utf-8'
+                    one_df = pd.read_csv(file, usecols=lambda col: col in pd_cols, encoding=encoding)
+                except:
+                    encoding = 'gbk'
+                    one_df = pd.read_csv(file, usecols=lambda col: col in pd_cols, encoding=encoding)
                 doc_df = pd.concat([doc_df, one_df], ignore_index=True, axis=0)
             if matched_excel:
                 # 在旧版本的pandas中, 默认引擎是openpyxl,使用xlrd比openpyxl速度更快,但是必须是新版,pip install xlrd==1.2.0

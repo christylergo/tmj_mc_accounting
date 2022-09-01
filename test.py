@@ -11,19 +11,5 @@ from collections import namedtuple
 import multiprocessing
 import threading
 import pandas as pd
-from tensorflow import keras
-
-
-df = pd.DataFrame({'A': ['one', 'one', 'two', 'three'] * 6,
-                   'B': ['A', 'B', 'C'] * 8,
-                   'C': ['foo', 'foo', 'foo', 'bar', 'bar', 'bar'] * 4,
-                   'D': np.random.randn(24),
-                   'E': np.random.randn(24),
-                   'F': [datetime.datetime(2013, i, 1) for i in range(1, 13)]
-                   + [datetime.datetime(2013, i, 15) for i in range(1, 13)]})
-
-print(df)
-df = df.set_index('C')
-print(df)
-df = pd.pivot_table(df, values='D', index=['A', 'B'],)
-print(df.reset_index())
+# from tensorflow import keras
+one_df = pd.read_csv(r'C:\Users\Administrator\Desktop\mc_docs\组合装明细.csv', encoding='utf-8')
