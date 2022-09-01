@@ -263,15 +263,16 @@ def tmj_combination(data_ins):
 def supply_price(data_ins):
     """
     因为表格数据类型不统一, 不符合sqlite要求, 所以要重新添加to_sql_df
+    此表作为timeseries处理会有一系列问题
     """
-    interval = st.MC_SALES_INTERVAL
+    # interval = st.MC_SALES_INTERVAL
     df = data_ins['data_frame']
     col = list_map(data_ins['doc_ref']['key_pos'])
     criteria = data_ins['doc_ref']['row_criteria'][col[2]]
     df = df[df[col[2]] == criteria]
     data_ins['data_frame'] = df.drop_duplicates(
         subset=col[1], keep='first').copy()
-    df, data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
+    # df, data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
     val = data_ins['doc_ref']['val_pos'][0].split('|')[0]
     df = df.reindex(columns=[col[1], val])
     data_ins['data_frame'] = df

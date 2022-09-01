@@ -11,7 +11,7 @@ from collections import namedtuple
 # 表格生成后是否打开, True表示'是',False表示'否'
 SHOW_DOC_AFTER_GENERATED = True
 # 销售日期区间, 默认前30天
-MC_SALES_INTERVAL = 160
+MC_SALES_INTERVAL = 20
 # 默认采用销售日报数据, 设置为False则默认采用天机销售数据
 DAILY_SALES = True
 # 对当月进行核算
@@ -203,7 +203,7 @@ DOC_REFERENCE = {
     },
     'supply_price': {
         'key_words': r'HDB202[0-9]\d{4}', 'key_pos': ['日期|业务时间', '货品id|后端商品编码', '费用类型', ],
-        'val_pos': ['供货价|含税单价', ], 'val_type': ['REAL', ], 'mode': 'merge', 'row_criteria': {'费用类型': '货款'},
+        'val_pos': ['供货价|含税单价', ], 'val_type': ['REAL', ], 'row_criteria': {'费用类型': '货款'},
     },
     'daily_sales': {
         'key_words': '销售日报', 'key_pos': ['日期|统计日期', '货品id', '四级类目名称'],
