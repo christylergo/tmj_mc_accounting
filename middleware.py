@@ -403,13 +403,17 @@ class ElementWiseCost:
         item = cls.mc_item['data_frame']
         item = item.drop_duplicates(subset=i_on, keep='first')
         # -------------------------------------------------------
-        mdf = pd.merge(combination, atom, left_on=c[2], right_on=c[0], how='inner', suffixes=('', '_atom'))
-        mdf.loc[:, a[-1]] = mdf.loc[:, a[-1]] * mdf.loc[:, c[-1]]
-        mdf.loc[:, a[-1]] = mdf.groupby(by=c[0])[a[-1]].transform(np.sum)
-        mdf = mdf.drop_duplicates(subset=c[0])
+        def inner_func() -> pd.DataFrame:
+            mdf = pd.merge(combination, atom, left_on=c[2], right_on=c[0], how='inner', suffixes=('', '_atom'))
+            mdf.loc[:, a[-1]] = mdf.loc[:, a[-1]] * mdf.loc[:, c[-1]]
+            mdf.loc[:, a[-1]] = mdf.groupby(by=c[0])[a[-1]].transform(np.sum)
+            mdf = mdf.drop_duplicates(subset=c[0])
+            return mdf
+        mdf = inner_func()
         atom = pd.merge(atom, mdf, left_on=a[1], right_on=a[0], suffixes=('', '_mdf'), how='left')
         atom.loc[:, a[2]] = np.where(atom[a[2] + '_mdf'].isna(), atom[a[2]], atom[a[2] + '_mdf'])
         atom = atom.reindex(columns=a)
+        mdf = inner_func()
         # -------------------------------------------------------
         mapping = [(c[0], a[0]), (c[1], a[0]), (c[2], a[0]), (a[2], a[2]), ]
         df = combine_df(mdf, atom, mapping)
