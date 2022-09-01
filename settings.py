@@ -194,7 +194,7 @@ DOC_REFERENCE = {
     },
     'sjc_new_item': {
         'key_words': '商家仓新品表格', 'key_pos': ['商品id|商品编码', 'skuid|SKU编码', ],
-        'val_pos': ['供货价', ], 'val_type': ['REAL', ], 'sheet_criteria': '新品|湿巾洗衣',
+        'val_pos': ['供货价', ], 'val_type': ['REAL', ], 'sheet_criteria': r'^((?<!新品).)+$',
     },
     'mc_category': {
         'key_words': '猫超类目扣点', 'key_pos': ['自营类目id', 'grouping|分组', '自主分类', ],
