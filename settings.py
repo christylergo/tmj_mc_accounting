@@ -11,7 +11,7 @@ from collections import namedtuple
 # 表格生成后是否打开, True表示'是',False表示'否'
 SHOW_DOC_AFTER_GENERATED = True
 # 销售日期区间, 默认前30天
-MC_SALES_INTERVAL = 20
+MC_SALES_INTERVAL = 60
 # 默认采用销售日报数据, 设置为False则默认采用天机销售数据
 DAILY_SALES = True
 # 对当月进行核算
