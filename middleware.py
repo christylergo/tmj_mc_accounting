@@ -270,11 +270,21 @@ def supply_price(data_ins):
     col = list_map(data_ins['doc_ref']['key_pos'])
     criteria = data_ins['doc_ref']['row_criteria'][col[2]]
     df = df[df[col[2]] == criteria]
-    data_ins['data_frame'] = df.drop_duplicates(
-        subset=col[1], keep='first').copy()
+    df = df.drop_duplicates(subset=col[1], keep='first').copy()
     # df, data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
     val = data_ins['doc_ref']['val_pos'][0].split('|')[0]
     df = df.reindex(columns=[col[1], val])
+    data_ins['data_frame'] = df
+
+
+@assembly(MiddlewareArsenal)
+def mc_virtual_combination(data_ins):
+    df = data_ins['data_frame']
+    col = list_map(data_ins['doc_ref']['val_pos'])
+    mdf = df.loc[:, col[1]] = df[col[0]] * df[col[1]]
+    mdf = mdf.copy()
+    df.loc[:, col[1]] = df.groupby('商品id')[col[1]].transform(np.sum)
+    df.loc[:, col[1]] = mdf / df.loc[:, col[1]]
     data_ins['data_frame'] = df
 
 
@@ -517,6 +527,7 @@ class ItemWisePromotionFee:
     yin_li_mo_fang = None
     zhi_tong_che = None
     mc_item = None
+    mc_virtual_combination = None
 
     @classmethod
     def assemble(cls) -> pd.DataFrame:
@@ -526,7 +537,7 @@ class ItemWisePromotionFee:
         accumulated_fee = []
         for attr in cls.__dict__:
             attribute = getattr(cls, attr)
-            if re.match(r'^[^_].*[^_](?<!item)$', attr) and isinstance(attribute, dict):
+            if re.match(r'^[^_].*[^_](?<!item)(?<!combination)$', attr) and isinstance(attribute, dict):
                 accumulated_fee.append(attr)
                 slave = attribute['data_frame']
                 df = pd.merge(df, slave, on=i_on, how='left')
@@ -543,6 +554,17 @@ class ItemWisePromotionFee:
         # df['other_cost'] = df['yin_li_mo_fang'] + df['wan_xiang_tai']
         df['accumulated_fee'] = df[accumulated_fee].agg(np.sum, axis=1)
         df = df.drop_duplicates(subset=i_on, keep='first')
+        cols = df.columns.to_list()
+        df = pd.merge(df, cls.mc_virtual_combination['data_frame'], on=i_on, how='left')
+        df.loc[:, '主商品供货价'] = df.loc[:, '主商品供货价'].fillna(1)
+        df.loc[:, i_on] = np.where(df['主商品id'].isna(), df[i_on], df['主商品id'])
+        accumulated_fee.append('accumulated_fee')
+        dfg = df.groupby(i_on)
+        for col in accumulated_fee:
+            df.loc[:, col] = df.loc[:, col] * df.loc[:, '主商品供货价']
+            df.loc[:, col] = dfg[col].transform(np.sum)
+        df = df.reindex(columns=cols)
+        df = df.drop_duplicates(subset=i_on)
         return df
 
 

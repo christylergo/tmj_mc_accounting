@@ -201,6 +201,11 @@ DOC_REFERENCE = {
         'val_pos': ['扣点', '毛保', '运费', '渠道推广服务费', ],
         'val_type': ['REAL', 'REAL', 'REAL', 'REAL', 'TEXT', ], 'sheet_criteria': '寄售|商家仓',
     },
+    'mc_virtual_combination': {
+        'key_words': '组套', 'key_pos': ['商品id|组套商品id', '主商品id', ],
+        'val_pos': ['主商品数量', '主商品供货价', ],
+        'val_type': ['REAL', 'REAL', ],
+    },
     'supply_price': {
         'key_words': r'HDB202[0-9]\d{4}', 'key_pos': ['日期|业务时间', '货品id|后端商品编码', '费用类型', ],
         'val_pos': ['供货价|含税单价', ], 'val_type': ['REAL', ], 'row_criteria': {'费用类型': '货款'},
