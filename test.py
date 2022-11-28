@@ -12,6 +12,9 @@ import multiprocessing
 import threading
 import pandas as pd
 # from tensorflow import keras
+import polars as pl
+
+
 one_df = pd.read_csv(r'C:\Users\Administrator\Desktop\mc_docs\组合装明细.csv', encoding='utf-8')
 one = np.round(one_df['数量'] + 0.35, 1)
 print(one)

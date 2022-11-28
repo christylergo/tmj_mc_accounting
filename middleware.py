@@ -14,6 +14,7 @@ from typing import (List, Callable, Optional)
 import settings as st
 from profit_calculator import calculator
 from profit_calculator import prettier_sort
+from profit_calculator import fs_calculator
 
 """
 -*- 容器 -*-
@@ -191,6 +192,38 @@ def daily_sales(data_ins):
 
 
 @assembly(MiddlewareArsenal)
+def financial_statement(data_ins):
+    interval = st.MC_SALES_INTERVAL
+    key_col = data_ins['doc_ref']['key_pos'][1].split('|')[0]
+    cate_col = data_ins['doc_ref']['key_pos'][2].split('|')[0]
+    val_col = list_map(data_ins['doc_ref']['val_pos'])
+    df = data_ins['data_frame']
+    df.loc[:, val_col[0]] = np.where(df[val_col[0]] == '--', 0, df[val_col[0]]).astype(np.float)
+    df.loc[:, val_col[1]] = np.where(df[val_col[1]] == '--', 0, df[val_col[1]]).astype(np.int)
+    data_ins['data_frame'] = df
+    data_ins['data_frame'], data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
+    df = pivot_time_series(data_ins)
+    key_df = df[key_col].drop_duplicates()
+    cate_df = pd.pivot_table(df, index=key_col, values=val_col[1], columns=cate_col, aggfunc=np.sum, fill_value=0)
+    sum_df = pd.pivot_table(df, index=key_col, values=val_col[1], aggfunc=np.sum, fill_value=0)
+    cate_df = cate_df.reset_index()
+    sum_df = sum_df.reset_index().rename(columns={val_col[1]: 'fs_sum'})
+    category = df[cate_col].drop_duplicates().to_list()
+    category.remove('货款')
+    df = df[df[cate_col] == '货款']
+    df = pd.merge(key_df, df, on=key_col, how='left')
+    df = pd.merge(df, cate_df, on=key_col, how='left')
+    df = pd.merge(df, sum_df, on=key_col, how='left')
+    data_ins['data_frame'] = df.fillna(0)
+    # ---------------------------------------
+    for index, cate in enumerate(category):
+        st.FEATURE_PROPERTY[cate] = {
+            'priority': index + 200, 'name': cate, 'floating_title': cate,
+            'width': 8, 'data_type': 'float', 'element_visible': False, 'item_visible': False, 'fs_visible': True, }
+    # ---------------------------------------
+
+
+@assembly(MiddlewareArsenal)
 def sjc_new_item(data_ins):
     data_ins['data_frame'] = data_ins['data_frame'].fillna('0')
     if data_ins['to_sql_df'] is not None:
@@ -262,6 +295,7 @@ def tmj_combination(data_ins):
 @assembly(MiddlewareArsenal)
 def supply_price(data_ins):
     """
+    -----Deprecated!-----
     因为表格数据类型不统一, 不符合sqlite要求, 所以要重新添加to_sql_df
     此表作为timeseries处理会有一系列问题
     """
@@ -412,6 +446,7 @@ class ElementWiseCost:
         base_info = cls.mc_base_info['data_frame']
         item = cls.mc_item['data_frame']
         item = item.drop_duplicates(subset=i_on, keep='first')
+
         # -------------------------------------------------------
         def inner_func() -> pd.DataFrame:
             mdf = pd.merge(combination, atom, left_on=c[2], right_on=c[0], how='inner', suffixes=('', '_atom'))
@@ -419,6 +454,7 @@ class ElementWiseCost:
             mdf.loc[:, a[-1]] = mdf.groupby(by=c[0])[a[-1]].transform(np.sum)
             mdf = mdf.drop_duplicates(subset=c[0])
             return mdf
+
         mdf = inner_func()
         atom = pd.merge(atom, mdf, left_on=a[1], right_on=a[0], suffixes=('', '_mdf'), how='left')
         atom.loc[:, a[2]] = np.where(atom[a[2] + '_mdf'].isna(), atom[a[2]], atom[a[2] + '_mdf'])
@@ -451,7 +487,7 @@ class ElementWiseParameter:
     mc_category = None
     sjc_new_item = None
     mc_item = None
-    supply_price = None
+    # supply_price = None
     mc_base_info = None
 
     @classmethod
@@ -460,19 +496,16 @@ class ElementWiseParameter:
         i_on = cls.mc_item['doc_ref']['key_pos'][0].split('|')[0]
         category = cls.mc_category['data_frame']
         sjc_sp = cls.sjc_new_item['data_frame']
-        rdc_sp = cls.supply_price['data_frame']
         item = cls.mc_item['data_frame']
         base = cls.mc_base_info['data_frame']
         base_sp = base.reindex(columns=['货品id', '供货价_base_info']).copy()
         base_sp.rename(columns={'供货价_base_info': '供货价'}, inplace=True)
         c_on = list_map(cls.mc_category['doc_ref']['key_pos'][0:2])
         sjc_on = list_map(cls.sjc_new_item['doc_ref']['key_pos'][0:2])
-        rdc_on = cls.supply_price['doc_ref']['key_pos'][1].split('|')[0]
         item = item.drop_duplicates(subset=i_on, keep='first')
         sjc = pd.merge(item, sjc_sp, on=sjc_on, how='left')
-        rdc_b = pd.merge(item, base_sp, on=rdc_on, how='left')
-        rdc = pd.merge(item, rdc_sp, on=rdc_on, how='left')
-        df = pd.concat([sjc, rdc_b, rdc], ignore_index=True)
+        rdc_b = pd.merge(item, base_sp, on=i_on, how='left')
+        df = pd.concat([sjc, rdc_b], ignore_index=True)
         df.loc[:, '供货价'] = df.loc[:, '供货价'].astype('float')
         df = df.sort_values(by='供货价', na_position='first')
         # debug = df[df['商品id'] == '641486140935']  # debug
@@ -480,8 +513,6 @@ class ElementWiseParameter:
         df = df.drop_duplicates(subset=sjc_on, keep='last')
         df = pd.merge(df, category, on=c_on, how='inner')
         df = df.drop_duplicates(subset=i_on, keep='first')
-        val = cls.supply_price['doc_ref']['val_pos'][0].split('|')[0]
-        df.loc[:, val] = df.loc[:, val].astype('float')
         return df
 
 
@@ -663,9 +694,27 @@ class ItemWiseProfitAssembly:
 
 
 @assembly(AssemblyLines)
+class FinancialStatementAssembly:
+    financial_statement = None
+    element_wise_cost = pd.DataFrame()
+
+    @classmethod
+    def assemble(cls):
+        if not readiness(cls):
+            return pd.DataFrame()
+        df = cls.element_wise_cost
+        df_right = cls.financial_statement['data_frame']
+        on = cls.financial_statement['doc_ref']['key_pos'][1].split('|')[0]
+        df = pd.merge(df, df_right, on=on, how='inner')
+        df = fs_calculator(df)
+        return df
+
+
+@assembly(AssemblyLines)
 class FinalAssembly:
     element_wise_profit_assembly = pd.DataFrame()
     item_wise_profit_assembly = pd.DataFrame()
+    financial_statement_assembly = pd.DataFrame()
 
     @classmethod
     def assemble(cls):
@@ -673,17 +722,28 @@ class FinalAssembly:
             return pd.DataFrame()
         edf = cls.element_wise_profit_assembly
         idf = cls.item_wise_profit_assembly
+        # -------------------------------------------
+        fs = cls.financial_statement_assembly
+        fs_sh = fs[fs['品牌名称'] == '十月结晶'].copy()
+        fs_ld = fs[fs['品牌名称'] == '琳达妈咪'].copy()
+        # -------------------------------------------
         e_rdc = edf[edf['grouping'] == '寄售'].copy()
         e_sjc = edf[edf['grouping'] == '商家仓'].copy()
         i_rdc = idf[idf['grouping'] == '寄售'].copy()
         i_sjc = idf[idf['grouping'] == '商家仓'].copy()
-        dfs = {'e_rdc': e_rdc, 'e_sjc': e_sjc, 'i_rdc': i_rdc, 'i_sjc': i_sjc, }
+        dfs = {'e_rdc': e_rdc, 'e_sjc': e_sjc, 'i_rdc': i_rdc, 'i_sjc': i_sjc, 'fs_sh': fs_sh, 'fs_ld': fs_ld}
         for _ in dfs:
             df = dfs[_]
             columns = df.columns.to_list()
             multi_index = []
             reindex = []
-            cate = 'element_visible' if _.startswith('e') else 'item_visible'
+            if _.startswith('e'):
+                cate = 'element_visible'
+            elif _.startswith('i'):
+                cate = 'item_visible'
+            else:
+                cate = 'fs_visible'
+
             for i in st.FEATURE_PROPERTY:
                 feature = st.FEATURE_PROPERTY[i]
                 if (w := feature['floating_title']) in columns:
@@ -710,5 +770,7 @@ class FinalAssembly:
         e_sjc = dfs['e_sjc']
         i_rdc = dfs['i_rdc']
         i_sjc = dfs['i_sjc']
-        dft = namedtuple('final_assembly', ['RDC初算', 'SJC初算', 'RDC商品维度', 'SJC商品维度'])
-        return dft(e_rdc, e_sjc, i_rdc, i_sjc)
+        fs_sh = dfs['fs_sh']
+        fs_ld = dfs['fs_ld']
+        dft = namedtuple('final_assembly', ['RDC初算', 'SJC初算', 'RDC商品维度', 'SJC商品维度', 'SH对账单', 'LD对账单'])
+        return dft(e_rdc, e_sjc, i_rdc, i_sjc, fs_sh, fs_ld)

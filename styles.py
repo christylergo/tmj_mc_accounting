@@ -9,7 +9,7 @@ import settings as st
 
 def add_styles(dft: tuple):
     """
-    dft = namedtuple('final_assembly', ['e_rdc', 'e_sjc', 'i_rdc', 'i_sjc'])
+    dft = namedtuple('final_assembly', ['e_rdc', 'e_sjc', 'i_rdc', 'i_sjc', fs_sh, fs_ld])
     """
     fields = list(dft._fields)
     wb = Workbook()
@@ -41,7 +41,7 @@ def add_styles(dft: tuple):
         columns.extend(multi_column.get_level_values(0))
         d_type.extend(multi_column.get_level_values(3))
         columns_size = multi_column.size + 1
-        type_set = {'int': '0', 'str': '@', 'float': '0.00', '%': '0.0%'}
+        type_set = {'int': '0', 'str': '@', 'float': '0', '%': '0.0%'}
         a_upper = 65
         freeze_panes = [None, True]
         for ii in range(columns_size):
@@ -84,8 +84,21 @@ def add_styles(dft: tuple):
             cell = chr(a_upper + columns_size // 26 - 1) + cell
         ws.auto_filter.ref = 'A1:' + cell + str(df.index.size+1)
         ws.freeze_panes = freeze_panes[0]
-        # column = 'A:B,E:H'
-        # ws.range(column).column_width = width[ii]
+        # ----------------给对账单表格中添加公式-------------------
+        if fields[enum].endswith('对账单'):
+            for eee in range(7, columns_size + 1):
+                cell = chr(a_upper + eee) + '2:' + chr(a_upper + eee) + str(df.index.size+1)
+                ws[chr(a_upper) + str(df.index.size + 2)] = '合计'
+                ws[chr(a_upper + eee) + str(df.index.size + 2)] = f'=SUM({cell})'
+                font = styles.Font(
+                        name='微软雅黑',
+                        size=10,
+                        bold=bold,
+                )
+                ws[chr(a_upper) + str(df.index.size + 2)].font = font
+                ws[chr(a_upper + eee) + str(df.index.size + 2)].font = font
+            ws.row_dimensions[df.index.size + 2].height = 30
+        # --------------------------------------------------------
     # ------------------------------------
     file_path = st.FILE_GENERATED_PATH
     wb.save(file_path)

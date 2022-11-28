@@ -69,6 +69,18 @@ def calculator(df: pd.DataFrame):
     return df
 
 
+def fs_calculator(df: pd.DataFrame):
+    df['fs_cost_sum'] = 0
+    df['fs_profit'] = 0
+    # --------------------
+    df.loc[:, 'fs_cost_sum'] = \
+        df.loc[:, 'unit_cost'] * df.loc[:, '计费数量']
+    df.loc[:, 'fs_profit'] = \
+        df.loc[:, 'fs_sum'] - df.loc[:, 'fs_cost_sum']
+    return df
+
+
+
 def prettier_sort(cls, df: pd.DataFrame):
     item = cls.feature_property['item_id']['floating_title']
     sku = cls.feature_property['sku_id']['floating_title']

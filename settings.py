@@ -11,7 +11,7 @@ from collections import namedtuple
 # 表格生成后是否打开, True表示'是',False表示'否'
 SHOW_DOC_AFTER_GENERATED = True
 # 销售日期区间, 默认前30天
-MC_SALES_INTERVAL = 60
+MC_SALES_INTERVAL = 45
 # 默认采用销售日报数据, 设置为False则默认采用天机销售数据
 DAILY_SALES = True
 # 对当月进行核算
@@ -61,7 +61,7 @@ FEATURE_PROPERTY = {
     # skuID
     'sku_id': {
         'priority': 7, 'name': 'SKUID', 'width': 14, 'data_type': 'str',
-        'floating_title': 'skuid', 'item_visible': False, },
+        'floating_title': 'skuid', 'item_visible': False, 'fs_visible': False, },
     # 商品名称
     'item_name': {
         'priority': 8, 'name': '商品名称', 'width': 50, 'alignment': 'left',
@@ -69,104 +69,117 @@ FEATURE_PROPERTY = {
     # 单件成本
     'unit_cost': {'priority': 9, 'name': '单件成本', 'floating_title': 'unit_cost', },
     # 供货价
-    'supply_price': {'priority': 10, 'name': '供货价', 'floating_title': '供货价', 'item_visible': False, },
+    'supply_price': {
+        'priority': 10, 'name': '供货价', 'floating_title': '供货价', 'item_visible': False, 'fs_visible': False, },
     # 毛保
     'guaranteed_profit_rate': {
         'priority': 11, 'name': '毛保', 'floating_title': '毛保',
-        'item_visible': False, 'data_type': '%', },
+        'item_visible': False, 'fs_visible': False, 'data_type': '%', },
     # 运费
     'transportation_fee': {
         'priority': 12, 'name': '运费', 'floating_title': '运费',
-        'data_type': '%', 'item_visible': False, },
+        'data_type': '%', 'item_visible': False,  'fs_visible': False, },
     # 渠道推广服务费
     'distribution_fee': {
         'priority': 13, 'name': '渠道服务费', 'floating_title': '渠道推广服务费',
-        'data_type': '%', 'item_visible': False, },
+        'data_type': '%', 'item_visible': False,  'fs_visible': False, },
     # 扣点
-    'profit_share': {'priority': 14, 'name': '扣点', 'floating_title': '扣点', 'data_type': '%', },
+    'profit_share': {'priority': 14, 'name': '扣点', 'floating_title': '扣点', 'data_type': '%',  'fs_visible': False, },
     # 销售额
-    'sales': {'priority': 15, 'name': '销售额', 'width': 9, 'floating_title': 'sales', 'data_type': 'int', },
+    'sales': {'priority': 15, 'name': '销售额', 'width': 10, 'floating_title': 'sales', 'data_type': 'float', 'fs_visible': False, },
     # 销量
-    'sales_volume': {'priority': 16, 'name': '销量', 'data_type': 'int', 'floating_title': 'sales_volume', },
+    'sales_volume': {'priority': 16, 'name': '销量', 'data_type': 'int', 'floating_title': 'sales_volume', 'fs_visible': False, },
     # 平均到手价
-    'mean_actual_price': {'priority': 17, 'name': '平均到手价', 'floating_title': 'mean_actual_price', },
+    'mean_actual_price': {'priority': 17, 'name': '平均到手价', 'floating_title': 'mean_actual_price', 'fs_visible': False, },
     # 单件毛利
-    'unit_goss_profit': {'priority': 18, 'name': '扣点前单件毛利', 'floating_title': 'unit_goss_profit', },
+    'unit_gross_profit': {'priority': 18, 'name': '扣点前单件毛利', 'floating_title': 'unit_gross_profit', 'fs_visible': False, },
     # 毛利
     'gross_profit': {
         'priority': 19, 'name': '扣点前毛利', 'width': 9, 'floating_title': 'gross_profit',
-        'data_type': 'int', },
+        'data_type': 'int', 'fs_visible': False, },
     # 毛利率
     'gross_profit_rate': {
         'priority': 20, 'name': '扣点前毛利率', 'floating_title': 'gross_profit_rate',
-        'width': 7, 'data_type': '%', 'element_visible': True, },
+        'width': 7, 'data_type': '%', 'element_visible': True, 'fs_visible': False, },
     # 到手价扣毛保
     'actual_price_share': {
         'priority': 21, 'name': '到手价扣毛保', 'floating_title': 'actual_price_share',
-        'item_visible': False, },
+        'item_visible': False, 'fs_visible': False, },
     # 结算价
     'retained_price_share': {
         'priority': 22, 'name': '结算价', 'floating_title': 'retained_price_share',
-        'item_visible': False, },
+        'item_visible': False, 'fs_visible': False, },
     # 单件利润
-    'unit_profit': {'priority': 23, 'name': '单件利润', 'floating_title': 'unit_profit', 'item_visible': False, },
+    'unit_profit': {'priority': 23, 'name': '单件利润', 'floating_title': 'unit_profit', 'item_visible': False, 'fs_visible': False, },
     # 平台利润
     'unit_platform_profit': {
         'priority': 24, 'name': '平台利润', 'floating_title': 'unit_platform_profit',
-        'element_visible': False, 'item_visible': False, },
+        'element_visible': False, 'item_visible': False, 'fs_visible': False, },
     # 单件毛保差额
     'unit_guaranteed_profit_variance': {
         'priority': 25, 'name': '单件毛保补差', 'floating_title': 'unit_guaranteed_profit_variance',
-        'item_visible': False, },
+        'item_visible': False, 'fs_visible': False, },
     # 毛保差额
     'guaranteed_profit_variance': {
         'priority': 26, 'name': '毛保补差', 'floating_title': 'guaranteed_profit_variance',
-        'width': 9, 'item_visible': False, 'data_type': 'int', },
+        'width': 9, 'item_visible': False, 'data_type': 'int', 'fs_visible': False, },
     # 初算利润
     'net_profit': {
         'priority': 27, 'name': '初算利润', 'width': 9, 'floating_title': 'net_profit',
-        'bold': True, 'data_type': 'int', },
+        'bold': True, 'data_type': 'int', 'fs_visible': False, },
     # 初算利润率
     'net_profit_rate': {
         'priority': 28, 'name': '初算利润率', 'floating_title': 'net_profit_rate',
-        'width': 7, 'data_type': '%', 'bold': True, },
+        'width': 7, 'data_type': '%', 'bold': True, 'fs_visible': False, },
     # 直通车
     'zhi_tong_che': {
-        'priority': 29, 'name': '直通车', 'width': 7, 'data_type': 'int', 
-        'floating_title': 'zhi_tong_che', 'element_visible': False, },
+        'priority': 29, 'name': '直通车', 'width': 8, 'data_type': 'float', 
+        'floating_title': 'zhi_tong_che', 'element_visible': False, 'fs_visible': False, },
     'yin_li_mo_fang': {
-        'priority': 30, 'name': '引力魔方', 'data_type': 'int', 
-        'floating_title': 'yin_li_mo_fang', 'element_visible': False, },
+        'priority': 30, 'name': '引力魔方', 'data_type': 'float', 'width': 7, 
+        'floating_title': 'yin_li_mo_fang', 'element_visible': False, 'fs_visible': False, },
     'wan_xiang_tai': {
-        'priority': 31, 'name': '万向台', 'data_type': 'int',
-        'floating_title': 'wan_xiang_tai', 'element_visible': False, },
+        'priority': 31, 'name': '万向台', 'data_type': 'float', 'width': 7, 
+        'floating_title': 'wan_xiang_tai', 'element_visible': False, 'fs_visible': False, },
     # 淘客
     'tao_ke': {
-        'priority': 32, 'name': '淘客', 'floating_title': 'tao_ke',
-        'element_visible': False, 'data_type': 'int', },
+        'priority': 32, 'name': '淘客', 'floating_title': 'tao_ke', 'width': 7, 
+        'element_visible': False, 'data_type': 'float', 'fs_visible': False, },
     # 淘客活动中心导出数据
     'tao_ke_raw': {
-        'priority': 32, 'name': '淘客', 'floating_title': 'tao_ke_raw',
-        'element_visible': False, 'data_type': 'int', },
+        'priority': 32, 'name': '淘客', 'floating_title': 'tao_ke_raw', 'width': 7, 
+        'element_visible': False, 'data_type': 'float', 'fs_visible': False, },
     # 猫超卡
     'mao_chao_ka': {
-        'priority': 33, 'name': '猫超卡', 'floating_title': 'mao_chao_ka',
-        'element_visible': False, 'data_type': 'int', },
+        'priority': 33, 'name': '猫超卡', 'floating_title': 'mao_chao_ka', 'width': 7, 
+        'element_visible': False, 'data_type': 'float', 'fs_visible': False, },
     # 其他
     'fu_dai': {
-        'priority': 34, 'name': '福袋', 'floating_title': 'fu_dai',
-        'element_visible': False, 'data_type': 'int', },
+        'priority': 34, 'name': '福袋', 'floating_title': 'fu_dai', 'width': 7, 
+        'element_visible': False, 'data_type': 'float', 'fs_visible': False, },
     # 扣费后利润
     'retained_profit': {
         'priority': 35, 'name': '扣费后利润', 'bold': True, 'width': 9, 'floating_title': 'retained_profit',
-        'element_visible': False, 'data_type': 'int', },
+        'element_visible': False, 'data_type': 'int', 'fs_visible': False, },
     # 扣费后利润率
     'retained_profit_rate': {
         'priority': 36, 'name': '扣费后利润率', 'floating_title': 'retained_profit_rate',
-        'width': 7, 'data_type': '%', 'element_visible': False, 'bold': True, },
+        'width': 7, 'data_type': '%', 'element_visible': False, 'bold': True, 'fs_visible': False, },
     'auxiliary': {
         'priority': 37, 'name': '类目均衡返还', 'floating_title': 'auxiliary',
-        'width': 9, 'data_type': 'int', 'bold': True, },
+        'width': 9, 'data_type': 'int', 'bold': True, 'fs_visible': False, },
+    'fs_volume': {
+        'priority': 101, 'name': '计费数量', 'floating_title': '计费数量',
+        'width': 7, 'data_type': 'int', 'element_visible': False, 'item_visible': False, },
+    'fs_cost_sum': {
+        'priority': 102, 'name': '成本', 'floating_title': 'fs_cost_sum',
+        'width': 8, 'data_type': 'float', 'element_visible': False, 'item_visible': False, },
+    'fs_money': {
+        'priority': 103, 'name': '含税金额', 'floating_title': '含税金额',
+        'width': 9, 'data_type': 'float', 'element_visible': False, 'item_visible': False, },
+    'fs_profit': {
+        'priority': 300, 'name': '利润', 'floating_title': 'fs_profit', 'bold': True,
+        'width': 9, 'data_type': 'float', 'element_visible': False, 'item_visible': False, },
 }
 
 """
@@ -186,7 +199,7 @@ DOC_REFERENCE = {
     'mc_item': {
         'key_words': r'^((?!淘客).)*export-((?!淘客).)*$',
         'key_pos': ['货品id|货品编码', '商家编码|条码', '商品id|商品编码', 'skuid|sku编码', '商品名称', '自营类目id', ],
-        'val_pos': ['所属店铺', '自营类目名称', '建档供应商名称', ], 'val_type': ['TEXT', 'TEXT', 'TEXT', ],
+        'val_pos': ['所属店铺', '自营类目名称', '品牌名称', '建档供应商名称'], 'val_type': ['TEXT', 'TEXT', 'TEXT', 'TEXT', ],
     },
     'mc_base_info': {
         'key_words': '猫超商品信息表', 'key_pos': [r'货品id|货品ID(后端)', '商家编码|旺店通条码', ],
@@ -206,9 +219,11 @@ DOC_REFERENCE = {
         'val_pos': ['主商品数量', '主商品供货价', ],
         'val_type': ['REAL', 'REAL', ],
     },
-    'supply_price': {
-        'key_words': r'HDB202[0-9]\d{4}', 'key_pos': ['日期|业务时间', '货品id|后端商品编码', '费用类型', ],
-        'val_pos': ['供货价|含税单价', ], 'val_type': ['REAL', ], 'row_criteria': {'费用类型': '货款'},
+
+    # used to be supply_price
+    'financial_statement': {
+        'key_words': r'对账单|HDB202[0-9]\d{4}', 'key_pos': ['日期|业务时间', '货品id|货品编码', '费用类型', ],
+        'val_pos': ['计费数量', '含税金额', ], 'val_type': ['REAL', 'REAL', ],  # 'row_criteria': {'费用类型': '货款'},
     },
     'daily_sales': {
         'key_words': '销售日报', 'key_pos': ['日期|统计日期', '货品id', '四级类目名称'],
@@ -243,11 +258,11 @@ DOC_REFERENCE = {
     'wan_xiang_tai': {
         'key_words': '万向台|货品加速', 'key_pos': ['日期', '商品id|宝贝Id', ],
         'val_pos': ['消耗', ], 'val_type': ['REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'], 
     },
     'yin_li_mo_fang': {
         'key_words': r'引力魔方|报表数据_15天归因\d+\.xlsx?$', 'key_pos': ['日期', '商品id', ],
-        'val_pos': ['消耗', ], 'val_type': ['REAL', ], 'mode': 'merge',
+        'val_pos': ['花费', ], 'val_type': ['REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
     },
     'zhi_tong_che': {
@@ -275,9 +290,9 @@ elif len(args) == 2 and re.match(r'^-+LM$', args[1], re.IGNORECASE):
     head = datetime.date(tt.tm_year, tail.timetuple().tm_mon, 1)
 elif len(args) == 4 and re.match(r'^-+i(_\d\d?[\./-]\d\d?){2}$', str.join('_', args[1:]), re.I):
     try:
-        separator = re.findall(r'(?=\d)[\./-](?=\d)')[0]
-        head = datetime.date(tt.tm_year, args[2].split(separator)[0], args[2].split(separator)[1])
-        tail = datetime.date(tt.tm_year, args[3].split(separator)[0], args[3].split(separator)[1])
+        separator = re.findall(r'(?<=\d)[\./-](?=\d)', args[2])[0]
+        head = datetime.date(tt.tm_year, int(args[2].split(separator)[0]), int(args[2].split(separator)[1]))
+        tail = datetime.date(tt.tm_year, int(args[3].split(separator)[0]), int(args[3].split(separator)[1]))
     except:
         raise ValueError('------日期数值错误！------')
     if head > tail:
@@ -300,6 +315,9 @@ DOCS_PATH = os.path.join(desktop, DOCS_PATH)
 # 代码文件夹路径
 CODE_PATH = os.path.join(desktop, CODE_PATH)
 # 生成表格路径
-FILE_GENERATED_PATH = os.path.join(desktop, f'猫超{head.timetuple().tm_mon}月利润核算_PoweredByPandas.xlsx')
+aaa = ""
+if CURRENT:
+    aaa = "(活动中心导出淘客数据)"
+FILE_GENERATED_PATH = os.path.join(desktop, f'猫超{head.timetuple().tm_mon}月利润核算{aaa}_PoweredByPandas.xlsx')
 # sys.path.append(CODE_PATH)
 print('settings->tracing...')
