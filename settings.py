@@ -10,12 +10,14 @@ from collections import namedtuple
 
 # 表格生成后是否打开, True表示'是',False表示'否'
 SHOW_DOC_AFTER_GENERATED = True
-# 销售日期区间, 默认前30天
-MC_SALES_INTERVAL = 45
+# 销售日期区间, 默认前60天
+MC_SALES_INTERVAL = 60
 # 默认采用销售日报数据, 设置为False则默认采用天机销售数据
 DAILY_SALES = True
 # 对当月进行核算
 CURRENT = False
+# 计算对账单模式
+FS_MODE = True
 # 网上导出数据文件夹路径
 DOCS_PATH = 'mc_docs'
 # 代码文件夹路径
@@ -73,7 +75,7 @@ FEATURE_PROPERTY = {
         'priority': 10, 'name': '供货价', 'floating_title': '供货价', 'item_visible': False, 'fs_visible': False, },
     # 毛保
     'guaranteed_profit_rate': {
-        'priority': 11, 'name': '毛保', 'floating_title': '毛保',
+        'priority': 11, 'name': '毛保费率', 'floating_title': '毛保费率',
         'item_visible': False, 'fs_visible': False, 'data_type': '%', },
     # 运费
     'transportation_fee': {
@@ -186,6 +188,11 @@ FEATURE_PROPERTY = {
 文件重要性的程度分为三类,'required'是必须的,'caution'是不必须,缺少的情况下会提示,'optional'是可选
 竖线后面的是表头实际名称, 所有统一的名称中的字母小写lower
 """
+for i in sys.argv:  # 为了更好运行对账单核算，增加的代码
+    if re.match(r'-+dzd', i, re.I):
+        FS_MODE = True
+ACCOUNT_MODE = not FS_MODE
+
 DOC_REFERENCE = {
     'tmj_atom': {
         'key_words': '单品明细', 'key_pos': ['商家编码', '主条码'],
@@ -211,66 +218,73 @@ DOC_REFERENCE = {
     },
     'mc_category': {
         'key_words': '猫超类目扣点', 'key_pos': ['自营类目id', 'grouping|分组', '自主分类', ],
-        'val_pos': ['扣点', '毛保', '运费', '渠道推广服务费', ],
+        'val_pos': ['扣点', '毛保费率', '运费', '渠道推广服务费', ],
         'val_type': ['REAL', 'REAL', 'REAL', 'REAL', 'TEXT', ], 'sheet_criteria': '寄售|商家仓',
     },
     'mc_virtual_combination': {
         'key_words': '组套', 'key_pos': ['商品id|组套商品id', '主商品id', ],
-        'val_pos': ['主商品数量', '主商品供货价', ],
+        'val_pos': ['主商品数量', '主商品供货价', ], 'required': ACCOUNT_MODE,
         'val_type': ['REAL', 'REAL', ],
     },
 
     # used to be supply_price
     'financial_statement': {
-        'key_words': r'对账单|HDB202[0-9]\d{4}', 'key_pos': ['日期|业务时间', '货品id|货品编码', '费用类型', ],
-        'val_pos': ['计费数量', '含税金额', ], 'val_type': ['REAL', 'REAL', ],  # 'row_criteria': {'费用类型': '货款'},
+        'key_words': r'对账单|HDB202[0-9]\d{4}', 'mode': 'merge',
+        'key_pos': ['日期|业务时间', '货品id|货品编码', '费用类型', '唯一ID'],  # 后1列是为了标记并剔除重复数据
+        'val_pos': ['计费数量', '含税金额', ], 'val_type': ['REAL', 'REAL', ], 'required': FS_MODE,  # 'row_criteria': {'费用类型': '货款'},
     },
     'daily_sales': {
         'key_words': '销售日报', 'key_pos': ['日期|统计日期', '货品id', '四级类目名称'],
-        'val_pos': ['sales_volume|净销售数量', r'sales|订单实付（退款后）', ],
+        'val_pos': ['sales_volume|净销售数量', r'sales|订单实付（退款后）', ], 'required': ACCOUNT_MODE,
         'val_type': ['REAL', 'REAL', ], 'mode': 'merge', 'pre_func': ['normalize_date_col', ],
     },
     'tian_ji_sales': {
         'key_words': r'天机.*商品信息|商品信息.*天机', 'key_pos': ['日期', '商品id', 'skuid|SKU_ID', ],
         'val_pos': ['sales_volume|支付件数', 'sales|支付金额', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
-        'pre_func': ['normalize_date_col', 'mc_time_series', ],
+        'pre_func': ['normalize_date_col', 'mc_time_series', ], 'required': ACCOUNT_MODE,
     },
     'mao_chao_ka': {
         'key_words': '猫超买返卡|猫超卡', 'key_pos': ['日期|业务时间', '商品id', ],
         'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'], 'required': ACCOUNT_MODE,
     },
     'fu_dai': {
         'key_words': '超市福袋|福袋', 'key_pos': ['日期|业务时间', '商品id', ],
         'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'], 'required': ACCOUNT_MODE,
     },
     'tao_ke': {
         'key_words': r'淘客.*\\(?!export)[^\\]*$', 'key_pos': ['日期|业务时间', '商品id', ],
         'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ],
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ], 'required': ACCOUNT_MODE,
     },
     'tao_ke_raw': {
         'key_words': r'淘客.*\\(?=export)[^\\]*$', 'key_pos': ['日期|数据时间', '商品id', ],
         'val_pos': ['结算佣金', '付款服务费', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ],
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ], 'required': ACCOUNT_MODE,
     },
     'wan_xiang_tai': {
         'key_words': '万向台|货品加速', 'key_pos': ['日期', '商品id|宝贝Id', ],
         'val_pos': ['消耗', ], 'val_type': ['REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'], 
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],  'required': ACCOUNT_MODE,
     },
     'yin_li_mo_fang': {
         'key_words': r'引力魔方|报表数据_15天归因\d+\.xlsx?$', 'key_pos': ['日期', '商品id', ],
         'val_pos': ['花费', ], 'val_type': ['REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'], 'required': ACCOUNT_MODE,
     },
     'zhi_tong_che': {
         'key_words': r'直通车|.*_单元\.csv$', 'key_pos': ['日期', '商品id', ],
         'val_pos': ['花费', ], 'val_type': ['REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],
+        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'], 'required': ACCOUNT_MODE,
     },
 }
+keys = []
+for key in DOC_REFERENCE:
+    if not DOC_REFERENCE[key].get('required', True):
+        keys.append(key)
+for key in keys:
+    DOC_REFERENCE.pop(key)
 
 args = sys.argv.copy()
 today = datetime.date.today()
@@ -279,6 +293,9 @@ interval = namedtuple('interval', ('head', 'tail'))
 for i in args[1:]:
     if re.match(r'-+pre', i, re.I):
         CURRENT = True
+        args.remove(i)
+    if re.match(r'-+dzd', i, re.I):
+        FS_MODE = True
         args.remove(i)
 if len(args) == 1:
     head = today - datetime.timedelta(days=MC_SALES_INTERVAL)

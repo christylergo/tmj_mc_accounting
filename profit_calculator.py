@@ -82,12 +82,15 @@ def fs_calculator(df: pd.DataFrame):
 
 
 def prettier_sort(cls, df: pd.DataFrame):
-    item = cls.feature_property['item_id']['floating_title']
     sku = cls.feature_property['sku_id']['floating_title']
+    item = cls.feature_property['item_id']['floating_title']
     cate = cls.feature_property['fourth_level_category']['floating_title']
     self_cate = cls.feature_property['category']['floating_title']
-    df = df.sort_values(by=sku, kind='mergesort', ignore_index=True)
-    df = df.sort_values(by=item, kind='mergesort', ignore_index=True)
-    df = df.sort_values(by=cate, kind='mergesort', ignore_index=True)
-    df = df.sort_values(by=self_cate, kind='mergesort', ignore_index=True)
+    group = cls.feature_property['group']['floating_title']
+    columns = df.columns.to_list()
+    sorted_col = [sku, item, cate, self_cate, group]
+    for col in sorted_col:
+        if col in columns:
+            df = df.sort_values(by=col, kind='mergesort', ignore_index=True)
+            
     return df

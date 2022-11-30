@@ -41,7 +41,7 @@ def add_styles(dft: tuple):
         columns.extend(multi_column.get_level_values(0))
         d_type.extend(multi_column.get_level_values(3))
         columns_size = multi_column.size + 1
-        type_set = {'int': '0', 'str': '@', 'float': '0', '%': '0.0%'}
+        type_set = {'int': '0', 'str': '@', 'float': '0.0', '%': '0.0%'}
         a_upper = 65
         freeze_panes = [None, True]
         for ii in range(columns_size):
@@ -86,7 +86,7 @@ def add_styles(dft: tuple):
         ws.freeze_panes = freeze_panes[0]
         # ----------------给对账单表格中添加公式-------------------
         if fields[enum].endswith('对账单'):
-            for eee in range(7, columns_size + 1):
+            for eee in range(8, columns_size + 1):
                 cell = chr(a_upper + eee) + '2:' + chr(a_upper + eee) + str(df.index.size+1)
                 ws[chr(a_upper) + str(df.index.size + 2)] = '合计'
                 ws[chr(a_upper + eee) + str(df.index.size + 2)] = f'=SUM({cell})'

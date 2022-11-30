@@ -41,9 +41,11 @@ def assembly(arg: Dict[str, callable]):
         if isinstance(obj, types.FunctionType):
             operator = inner_operator
             obj_name = obj.__name__
-        else:
+        elif getattr(obj, 'required', True):
             operator = obj
             obj_name = wrapper_line_name(obj.__name__)
+        else:
+            return
 
         for doc in (w := st.DOC_REFERENCE):
             if obj_name in w[doc].get('pre_func', []):
@@ -87,8 +89,8 @@ def convert_date_type(data_ins):
     key_pos = [col for col in key_pos if col in df.columns]
     # pandas的text数据方法只能用于series
     for col in key_pos:
-        df.loc[:, col] = df.loc[:, col].astype(
-            'string').str.replace(r"\.0+$|^=\"|\"$|^'", '', regex=True)
+        df.loc[:, col] = df.loc[:, col].astype('string')
+        df.loc[:, col] = df.loc[:, col].str.replace(r"\.0+$|^=\"|\"$|^'", '', regex=True)
 
 
 def rectify_time_series(data_ins, interval):
@@ -123,6 +125,25 @@ def rectify_time_series(data_ins, interval):
         to_sql_df = doc_df.copy()
     data_frame = data_frame.copy()
     return data_frame, to_sql_df
+
+
+def rectify_financial_statement(data_ins, interval):
+    head, tail = interval
+    date_col = data_ins['doc_ref']['key_pos'][0].split('|')[0]
+    key_col = data_ins['doc_ref']['key_pos'][2:]
+    df = data_ins['data_frame']
+    df = df.sort_index(level=0, kind='mergesort').copy()
+    df = df.drop_duplicates(subset=key_col, keep='last')
+    source = df.index.get_level_values(0)
+    doc_df = df.loc['doc_df'] if 'doc_df' in source else None
+    to_sql_df = None
+    if doc_df is not None:
+        to_sql_df = doc_df.copy()
+    df[date_col] = pd.to_datetime(df[date_col]).dt.date
+    criteria = (head <= df[date_col]) & (df[date_col] <= tail)
+    df = df.loc[criteria, :].copy()
+    df.loc[:, date_col] = df.loc[:, date_col].astype('str')
+    return df, to_sql_df
 
 
 def pivot_time_series(data_ins):
@@ -197,13 +218,14 @@ def financial_statement(data_ins):
     key_col = data_ins['doc_ref']['key_pos'][1].split('|')[0]
     cate_col = data_ins['doc_ref']['key_pos'][2].split('|')[0]
     val_col = list_map(data_ins['doc_ref']['val_pos'])
-    df = data_ins['data_frame']
-    df.loc[:, val_col[0]] = np.where(df[val_col[0]] == '--', 0, df[val_col[0]]).astype(np.float)
-    df.loc[:, val_col[1]] = np.where(df[val_col[1]] == '--', 0, df[val_col[1]]).astype(np.int)
-    data_ins['data_frame'] = df
-    data_ins['data_frame'], data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
-    df = pivot_time_series(data_ins)
-    key_df = df[key_col].drop_duplicates()
+    df, data_ins['to_sql_df'] = rectify_financial_statement(data_ins, interval)
+    df.loc[:, val_col] = df.loc[:, val_col].astype('string')
+    df.loc[:, val_col[0]] = np.where(df[val_col[0]] == '--', '0', df[val_col[0]])
+    df.loc[:, val_col[1]] = np.where(df[val_col[1]] == '--', '0', df[val_col[1]])
+    df.loc[:, val_col[0]] = df.loc[:, val_col[0]].astype(np.float)
+    df.loc[:, val_col[1]] = df.loc[:, val_col[1]].astype(np.float)
+    df = pd.pivot_table(df, index=[key_col, cate_col], values=val_col, aggfunc=np.sum, fill_value=0)
+    df = df.reset_index()
     cate_df = pd.pivot_table(df, index=key_col, values=val_col[1], columns=cate_col, aggfunc=np.sum, fill_value=0)
     sum_df = pd.pivot_table(df, index=key_col, values=val_col[1], aggfunc=np.sum, fill_value=0)
     cate_df = cate_df.reset_index()
@@ -211,15 +233,15 @@ def financial_statement(data_ins):
     category = df[cate_col].drop_duplicates().to_list()
     category.remove('货款')
     df = df[df[cate_col] == '货款']
-    df = pd.merge(key_df, df, on=key_col, how='left')
-    df = pd.merge(df, cate_df, on=key_col, how='left')
+    df = pd.merge(cate_df, df, on=key_col, how='left')
     df = pd.merge(df, sum_df, on=key_col, how='left')
+    df.loc[:, cate_col] = df.loc[:, cate_col].fillna('--')
     data_ins['data_frame'] = df.fillna(0)
     # ---------------------------------------
     for index, cate in enumerate(category):
         st.FEATURE_PROPERTY[cate] = {
             'priority': index + 200, 'name': cate, 'floating_title': cate,
-            'width': 8, 'data_type': 'float', 'element_visible': False, 'item_visible': False, 'fs_visible': True, }
+            'width': 9, 'data_type': 'float', 'element_visible': False, 'item_visible': False, 'fs_visible': True, }
     # ---------------------------------------
 
 
@@ -372,7 +394,8 @@ dataframe之间有主、从的区分, 1主单/多从的方式调用.
 data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': data_frame,
 'to_sql_df': sql_df, 'mode': self.from_sql}
 """
-
+fs_mode = st.FS_MODE
+account_mode = st.ACCOUNT_MODE
 
 def validate_attr(cls) -> bool:
     ready = True
@@ -524,6 +547,7 @@ class ElementWiseSales:
     daily_sales = None
     tian_ji_sales = None
     mc_item = None
+    required = account_mode
 
     @classmethod
     def assemble(cls) -> pd.DataFrame:
@@ -559,6 +583,7 @@ class ItemWisePromotionFee:
     zhi_tong_che = None
     mc_item = None
     mc_virtual_combination = None
+    required = account_mode
 
     @classmethod
     def assemble(cls) -> pd.DataFrame:
@@ -606,6 +631,7 @@ class ElementWiseProfitAssembly:
     element_wise_cost = pd.DataFrame()
     element_wise_parameter = pd.DataFrame()
     element_wise_sales = pd.DataFrame()
+    required = account_mode
 
     @classmethod
     def assemble(cls):
@@ -635,6 +661,7 @@ class ItemWiseProfitAssembly:
     element_wise_cost = pd.DataFrame()
     element_wise_parameter = pd.DataFrame()
     element_wise_sales = pd.DataFrame()
+    required = account_mode
 
     @classmethod
     def assemble(cls):
@@ -695,43 +722,70 @@ class ItemWiseProfitAssembly:
 
 @assembly(AssemblyLines)
 class FinancialStatementAssembly:
+    feature_property = st.FEATURE_PROPERTY
     financial_statement = None
     element_wise_cost = pd.DataFrame()
+    element_wise_parameter = pd.DataFrame()
+    required = fs_mode
 
     @classmethod
     def assemble(cls):
         if not readiness(cls):
             return pd.DataFrame()
-        df = cls.element_wise_cost
-        df_right = cls.financial_statement['data_frame']
+        df_cost = cls.element_wise_cost
+        df = cls.financial_statement['data_frame']
+        df_parameter = cls.element_wise_parameter
         on = cls.financial_statement['doc_ref']['key_pos'][1].split('|')[0]
-        df = pd.merge(df, df_right, on=on, how='inner')
+        fs_col = df.columns.to_list()
+        fs_col.remove(on)
+        cost_col = df_cost.columns.to_list()
+        parameter_col = df_parameter.columns.to_list()
+        parameter_col.remove(on)
+        new_names = {}
+        for element in parameter_col:
+            if element in cost_col:
+                new_names[element] = element + '_y'
+        df_cost = df_cost.rename(columns=new_names)
+        new_names = {}
+        for element in fs_col:
+            if element in parameter_col:
+                new_names[element] = element + '_y'
+        df_parameter = df_parameter.rename(columns=new_names)
+        df = pd.merge(df, df_parameter, on=on, how='left')
+        df = pd.merge(df, df_cost, on=on, how='left')
         df = fs_calculator(df)
+        df = prettier_sort(cls, df)
         return df
 
 
 @assembly(AssemblyLines)
 class FinalAssembly:
-    element_wise_profit_assembly = pd.DataFrame()
-    item_wise_profit_assembly = pd.DataFrame()
-    financial_statement_assembly = pd.DataFrame()
+    if account_mode:
+        element_wise_profit_assembly = pd.DataFrame()
+        item_wise_profit_assembly = pd.DataFrame()
+    if fs_mode:
+        financial_statement_assembly = pd.DataFrame()
 
     @classmethod
     def assemble(cls):
         if not readiness(cls):
             return pd.DataFrame()
-        edf = cls.element_wise_profit_assembly
-        idf = cls.item_wise_profit_assembly
+        dfs = {}
+        if account_mode:
+            edf = cls.element_wise_profit_assembly
+            idf = cls.item_wise_profit_assembly
+            e_rdc = edf[edf['grouping'] == '寄售'].copy()
+            e_sjc = edf[edf['grouping'] == '商家仓'].copy()
+            i_rdc = idf[idf['grouping'] == '寄售'].copy()
+            i_sjc = idf[idf['grouping'] == '商家仓'].copy()
+            dfs = {'e_rdc': e_rdc, 'e_sjc': e_sjc, 'i_rdc': i_rdc, 'i_sjc': i_sjc,}
         # -------------------------------------------
-        fs = cls.financial_statement_assembly
-        fs_sh = fs[fs['品牌名称'] == '十月结晶'].copy()
-        fs_ld = fs[fs['品牌名称'] == '琳达妈咪'].copy()
+        if fs_mode:
+            fs = cls.financial_statement_assembly
+            fs_sh = fs[fs['品牌名称'] == '十月结晶'].copy()
+            fs_ld = fs[fs['品牌名称'] == '琳达妈咪'].copy()
+            dfs = {'fs_sh': fs_sh, 'fs_ld': fs_ld}
         # -------------------------------------------
-        e_rdc = edf[edf['grouping'] == '寄售'].copy()
-        e_sjc = edf[edf['grouping'] == '商家仓'].copy()
-        i_rdc = idf[idf['grouping'] == '寄售'].copy()
-        i_sjc = idf[idf['grouping'] == '商家仓'].copy()
-        dfs = {'e_rdc': e_rdc, 'e_sjc': e_sjc, 'i_rdc': i_rdc, 'i_sjc': i_sjc, 'fs_sh': fs_sh, 'fs_ld': fs_ld}
         for _ in dfs:
             df = dfs[_]
             columns = df.columns.to_list()
@@ -766,11 +820,17 @@ class FinalAssembly:
             df.index.name = '序号'
             dfs[_] = df
         # --------------------------------------------------------------------------------
-        e_rdc = dfs['e_rdc']
-        e_sjc = dfs['e_sjc']
-        i_rdc = dfs['i_rdc']
-        i_sjc = dfs['i_sjc']
-        fs_sh = dfs['fs_sh']
-        fs_ld = dfs['fs_ld']
-        dft = namedtuple('final_assembly', ['RDC初算', 'SJC初算', 'RDC商品维度', 'SJC商品维度', 'SH对账单', 'LD对账单'])
-        return dft(e_rdc, e_sjc, i_rdc, i_sjc, fs_sh, fs_ld)
+        df_tuple = None
+        if account_mode:
+            e_rdc = dfs['e_rdc']
+            e_sjc = dfs['e_sjc']
+            i_rdc = dfs['i_rdc']
+            i_sjc = dfs['i_sjc']
+            dft = namedtuple('final_assembly', ['RDC初算', 'SJC初算', 'RDC商品维度', 'SJC商品维度', ])
+            df_tuple = dft(e_rdc, e_sjc, i_rdc, i_sjc)
+        if fs_mode:
+            fs_sh = dfs['fs_sh']
+            fs_ld = dfs['fs_ld']
+            dft = namedtuple('final_assembly', ['SH对账单', 'LD对账单'])
+            df_tuple = dft(fs_sh, fs_ld)
+        return df_tuple
