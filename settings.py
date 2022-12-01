@@ -17,7 +17,7 @@ DAILY_SALES = True
 # 对当月进行核算
 CURRENT = False
 # 计算对账单模式
-FS_MODE = True
+FS_MODE = False
 # 网上导出数据文件夹路径
 DOCS_PATH = 'mc_docs'
 # 代码文件夹路径

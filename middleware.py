@@ -130,7 +130,7 @@ def rectify_time_series(data_ins, interval):
 def rectify_financial_statement(data_ins, interval):
     head, tail = interval
     date_col = data_ins['doc_ref']['key_pos'][0].split('|')[0]
-    key_col = data_ins['doc_ref']['key_pos'][2:]
+    key_col = list_map(data_ins['doc_ref']['key_pos'])
     df = data_ins['data_frame']
     df = df.sort_index(level=0, kind='mergesort').copy()
     df = df.drop_duplicates(subset=key_col, keep='last')
