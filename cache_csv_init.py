@@ -23,8 +23,8 @@ def initialize_csv_cache(csv_path):
     li = list(p.glob('*'))
     for f in li:
         size += f.stat().st_size
-    # 如果文件合计size大于512M, 清空文件夹
-    if size > 2 ** 29:
+    # 如果文件合计size大于1024M, 清空文件夹
+    if size > 2 ** 30:
         for f in li:
             f.unlink()
     # print('tracing--->>>')

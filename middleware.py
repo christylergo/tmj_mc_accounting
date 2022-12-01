@@ -127,25 +127,6 @@ def rectify_time_series(data_ins, interval):
     return data_frame, to_sql_df
 
 
-def rectify_financial_statement(data_ins, interval):
-    head, tail = interval
-    date_col = data_ins['doc_ref']['key_pos'][0].split('|')[0]
-    key_col = list_map(data_ins['doc_ref']['key_pos'])
-    df = data_ins['data_frame']
-    df = df.sort_index(level=0, kind='mergesort').copy()
-    df = df.drop_duplicates(subset=key_col, keep='last')
-    source = df.index.get_level_values(0)
-    doc_df = df.loc['doc_df'] if 'doc_df' in source else None
-    to_sql_df = None
-    if doc_df is not None:
-        to_sql_df = doc_df.copy()
-    df[date_col] = pd.to_datetime(df[date_col]).dt.date
-    criteria = (head <= df[date_col]) & (df[date_col] <= tail)
-    df = df.loc[criteria, :].copy()
-    df.loc[:, date_col] = df.loc[:, date_col].astype('str')
-    return df, to_sql_df
-
-
 def pivot_time_series(data_ins):
     key_col = list_map(data_ins['doc_ref']['key_pos'][1:])
     val_col = list_map(data_ins['doc_ref']['val_pos'])
@@ -212,16 +193,38 @@ def daily_sales(data_ins):
     data_ins['data_frame'] = df
 
 
+def rectify_financial_statement(data_ins, interval):
+    head, tail = interval
+    date_col = data_ins['doc_ref']['key_pos'][0].split('|')[0]
+    key_col = list_map(data_ins['doc_ref']['key_pos'][2:])
+    df = data_ins['data_frame']
+    columns = df.columns.to_list()
+    df = df.sort_index(level=0, kind='mergesort')
+    df = df.reset_index(drop=False)
+    df = df.drop_duplicates(subset=key_col, keep='last').copy()
+    df.loc[:, date_col] = pd.to_datetime(df[date_col]).dt.date
+    criteria = (head <= df[date_col]) & (df[date_col] <= tail)
+    df.loc[:, date_col] = df.loc[:, date_col].astype('str')
+    df = df.loc[criteria, :]
+    doc_df = df.loc[df['source'] == 'doc_df', columns].copy()
+    df = df.loc[:, columns].copy()
+    return df, doc_df
+
+
 @assembly(MiddlewareArsenal)
 def financial_statement(data_ins):
     interval = st.MC_SALES_INTERVAL
     key_col = data_ins['doc_ref']['key_pos'][1].split('|')[0]
     cate_col = data_ins['doc_ref']['key_pos'][2].split('|')[0]
     val_col = list_map(data_ins['doc_ref']['val_pos'])
+    df = data_ins['data_frame']
+    try:
+        df.loc[:, val_col[0]] = np.where(df[val_col[0]] == '--', '0', df[val_col[0]])
+        df.loc[:, val_col[1]] = np.where(df[val_col[1]] == '--', '0', df[val_col[1]])
+    except:
+        df.loc[:, val_col[0]] = np.where(df[val_col[0]] == '--', 0, df[val_col[0]])
+        df.loc[:, val_col[1]] = np.where(df[val_col[1]] == '--', 0, df[val_col[1]])
     df, data_ins['to_sql_df'] = rectify_financial_statement(data_ins, interval)
-    df.loc[:, val_col] = df.loc[:, val_col].astype('string')
-    df.loc[:, val_col[0]] = np.where(df[val_col[0]] == '--', '0', df[val_col[0]])
-    df.loc[:, val_col[1]] = np.where(df[val_col[1]] == '--', '0', df[val_col[1]])
     df.loc[:, val_col[0]] = df.loc[:, val_col[0]].astype(np.float)
     df.loc[:, val_col[1]] = df.loc[:, val_col[1]].astype(np.float)
     df = pd.pivot_table(df, index=[key_col, cate_col], values=val_col, aggfunc=np.sum, fill_value=0)

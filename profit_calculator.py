@@ -37,7 +37,7 @@ def calculator(df: pd.DataFrame):
     dfr.loc[:, 'gross_profit_rate'] = \
         dfr.loc[:, 'unit_goss_profit'] / dfr.loc[:, 'mean_actual_price']
     dfr.loc[:, 'actual_price_share'] = \
-        dfr.loc[:, 'mean_actual_price'] * (1 - dfr.loc[:, '毛保'])
+        dfr.loc[:, 'mean_actual_price'] * (1 - dfr.loc[:, '毛保费率'])
     criteria = dfr.loc[:, 'actual_price_share'] >= dfr.loc[:, '供货价']
     dfr.loc[:, 'retained_price_share'] = np.where(
         criteria, dfr.loc[:, '供货价'], dfr.loc[:, 'actual_price_share'])

@@ -258,7 +258,7 @@ class DocumentIO:
         cursor = conn.cursor()
         query_data = []
         for to_sql in list_ins:
-            if to_sql['to_sql_df'] is not None:
+            if to_sql['to_sql_df'] is not None and not to_sql['to_sql_df'].empty:
                 if to_sql['mode'] == 'merge':
                     # 需要特别留意DataFrame.to_sql()的参数,必须明确这些参数
                     to_sql['to_sql_df'].to_sql(
@@ -270,7 +270,8 @@ class DocumentIO:
                     to_sql['to_sql_df'].to_sql(
                         to_sql['identity'], conn, if_exists='append', index=False, chunksize=1000)
                 print(f"{to_sql['identity']} has pumped data into sqlite ...")
-                # 写入sqlite的文件更新信息, 避免出现线程执行失败, 但是文件信息却更新了的情况
+            # 写入sqlite的文件更新信息, 避免出现线程执行失败, 但是文件信息却更新了的情况
+            if to_sql['to_sql_df'] is not None:
                 for file in cls.files:
                     if file['identity'] == to_sql['identity']:
                         query_data.append(

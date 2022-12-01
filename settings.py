@@ -210,7 +210,7 @@ DOC_REFERENCE = {
     },
     'mc_base_info': {
         'key_words': '猫超商品信息表', 'key_pos': [r'货品id|货品ID(后端)', '商家编码|旺店通条码', ],
-        'val_pos': ['入库名称', '供货价_base_info|供货价', ], 'val_type': ['TEXT', 'REAL', ], 'sheet_criteria': 'Sheet1',
+        'val_pos': ['入库名称', '供货价_base_info|供货价', ], 'val_type': ['TEXT', 'REAL', ],
     },
     'sjc_new_item': {
         'key_words': '商家仓新品表格', 'key_pos': ['商品id|商品编码', 'skuid|SKU编码', ],
@@ -287,6 +287,7 @@ for key in keys:
     DOC_REFERENCE.pop(key)
 
 args = sys.argv.copy()
+# args = ['args', '-dzd', '-i', '10.1', '10.31']  # debug
 today = datetime.date.today()
 tt = today.timetuple()
 interval = namedtuple('interval', ('head', 'tail'))
@@ -305,11 +306,15 @@ if len(args) == 1:
 elif len(args) == 2 and re.match(r'^-+LM$', args[1], re.IGNORECASE):
     tail = datetime.date(tt.tm_year, tt.tm_mon, 1) - datetime.timedelta(days=1)
     head = datetime.date(tt.tm_year, tail.timetuple().tm_mon, 1)
-elif len(args) == 4 and re.match(r'^-+i(_\d\d?[\./-]\d\d?){2}$', str.join('_', args[1:]), re.I):
+elif len(args) == 4 and re.match(r'^-+i(_(\d{4}[\./-])?\d\d?[\./-]\d\d?){2}$', str.join('_', args[1:]), re.I):
     try:
-        separator = re.findall(r'(?<=\d)[\./-](?=\d)', args[2])[0]
-        head = datetime.date(tt.tm_year, int(args[2].split(separator)[0]), int(args[2].split(separator)[1]))
-        tail = datetime.date(tt.tm_year, int(args[3].split(separator)[0]), int(args[3].split(separator)[1]))
+        sep = re.findall(r'(?<=\d)[\./-](?=\d)', args[2])[0]
+        if len(args[2].split(sep)) == 2:
+            head = datetime.date(tt.tm_year, int(args[2].split(sep)[0]), int(args[2].split(sep)[1]))
+            tail = datetime.date(tt.tm_year, int(args[3].split(sep)[0]), int(args[3].split(sep)[1]))
+        else:
+            head = datetime.date(int(args[2].split(sep)[0]), int(args[2].split(sep)[1]), int(args[2].split(sep)[2]))
+            tail = datetime.date(int(args[3].split(sep)[0]), int(args[3].split(sep)[1]), int(args[3].split(sep)[2]))
     except:
         raise ValueError('------日期数值错误！------')
     if head > tail:
