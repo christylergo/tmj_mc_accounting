@@ -18,6 +18,8 @@ DAILY_SALES = True
 CURRENT = False
 # 计算对账单模式
 FS_MODE = False
+# 是否在已存数据库的情况下打开并读取文件, 主要用于financial statement
+READ_DOCS_EXPLICITLY = False
 # 网上导出数据文件夹路径
 DOCS_PATH = 'mc_docs'
 # 代码文件夹路径
@@ -297,6 +299,9 @@ for i in args[1:]:
         args.remove(i)
     if re.match(r'-+dzd', i, re.I):
         FS_MODE = True
+        args.remove(i)
+    if re.match(r'-+merge', i, re.I):
+        READ_DOCS_EXPLICITLY = True
         args.remove(i)
 if len(args) == 1:
     head = today - datetime.timedelta(days=MC_SALES_INTERVAL)

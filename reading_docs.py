@@ -96,7 +96,7 @@ class DocumentIO:
                         file['read_doc'] = False
         xlsx_list = []
         for file in cls.files:
-            if re.match(r'^.+\.xlsx$', file['file_name']) and file['read_doc']:
+            if re.match(r'^.+\.xlsx$', file['file_name']) and (file['read_doc'] or st.READ_DOCS_EXPLICITLY):
                 if file['identity'] and file['file_size'] > st.XLSX_TO_CSV_THRESHOLD:
                     xlsx_list.append(file['file_name'])
         csv_list = csv.xlsx_to_csv(xlsx_list, cls.csv_path)
@@ -129,9 +129,12 @@ class DocumentIO:
     def fit_file(self) -> None:
         file_name = []
         read_doc = False
+        read_docs_explicitly = st.READ_DOCS_EXPLICITLY
         for file in self.files:  # files是类属性,全部文件夹中的文件信息列表
             if file['identity'] == self.identity:
                 self.switch = True
+                if self.from_sql == 'merge':
+                    file['read_doc'] = file['read_doc'] or read_docs_explicitly
                 # file name 是完整的带有路径的文件名, 可以用于读取, base name是不带路径的文件名
                 if file['read_doc'] is True:
                     file_name.append(file['file_name'])

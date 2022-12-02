@@ -34,7 +34,7 @@ def assembly(arg: Dict[str, callable]):
         @wraps(obj)
         def inner_operator(*args, **kwargs):
             # extra operations can be added here
-            convert_date_type(*args, **kwargs)
+            convert_data_type(*args, **kwargs)
             legacy = obj(*args, **kwargs)
             return legacy
 
@@ -80,7 +80,7 @@ def list_map(col: List[str]):
     return list(map(lambda i: i.split('|')[0], col))
 
 
-def convert_date_type(data_ins):
+def convert_data_type(data_ins):
     """
     对每一个data frame的key列进行数据类型转换, 把float类型的key转成string
     """
@@ -201,7 +201,7 @@ def rectify_financial_statement(data_ins, interval):
     columns = df.columns.to_list()
     df = df.sort_index(level=0, kind='mergesort')
     df = df.reset_index(drop=False)
-    df = df.drop_duplicates(subset=key_col, keep='last').copy()
+    df = df.drop_duplicates(subset=key_col, keep='last')
     df.loc[:, date_col] = pd.to_datetime(df[date_col]).dt.date
     criteria = (head <= df[date_col]) & (df[date_col] <= tail)
     df.loc[:, date_col] = df.loc[:, date_col].astype('str')
