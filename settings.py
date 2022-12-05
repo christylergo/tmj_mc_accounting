@@ -18,6 +18,7 @@ DAILY_SALES = True
 CURRENT = False
 # 计算对账单模式
 FS_MODE = False
+# FS_MODE = True  # debug
 # 是否在已存数据库的情况下打开并读取文件, 主要用于financial statement
 READ_DOCS_EXPLICITLY = False
 # 网上导出数据文件夹路径
@@ -177,9 +178,12 @@ FEATURE_PROPERTY = {
         'width': 7, 'data_type': 'int', 'element_visible': False, 'item_visible': False, },
     'fs_cost_sum': {
         'priority': 102, 'name': '成本', 'floating_title': 'fs_cost_sum',
-        'width': 8, 'data_type': 'float', 'element_visible': False, 'item_visible': False, },
+        'width': 9, 'data_type': 'float', 'element_visible': False, 'item_visible': False, },
+    'fs_sum': {
+        'priority': 103, 'name': '结算含税总额', 'floating_title': 'fs_sum',
+        'width': 9, 'data_type': 'float', 'element_visible': False, 'item_visible': False, },
     'fs_money': {
-        'priority': 103, 'name': '含税金额', 'floating_title': '含税金额',
+        'priority': 104, 'name': '货款含税总额', 'floating_title': '含税金额',
         'width': 9, 'data_type': 'float', 'element_visible': False, 'item_visible': False, },
     'fs_profit': {
         'priority': 300, 'name': '利润', 'floating_title': 'fs_profit', 'bold': True,
@@ -231,9 +235,9 @@ DOC_REFERENCE = {
 
     # used to be supply_price
     'financial_statement': {
-        'key_words': r'对账单|HDB202[0-9]\d{4}', 'mode': 'merge',
-        'key_pos': ['日期|业务时间', '货品id|货品编码', '费用类型', '唯一ID'],  # 后1列是为了标记并剔除重复数据
-        'val_pos': ['计费数量', '含税金额', ], 'val_type': ['REAL', 'REAL', ], 'required': FS_MODE,  # 'row_criteria': {'费用类型': '货款'},
+        'key_words': r'对账单|HDB202[0-9]\d{4}', 'mode': 'merge', 'sheet_criteria': '^.*?账单明细.*?$',
+        'key_pos': ['日期|业务时间', '货品id|货品编码|后端商品编码', '费用类型', '唯一ID'],  # 后1列是为了标记并剔除重复数据
+        'val_pos': ['计费数量|商品数量', '含税金额', ], 'val_type': ['REAL', 'REAL', ], 'required': FS_MODE,  # 'row_criteria': {'费用类型': '货款'},
     },
     'daily_sales': {
         'key_words': '销售日报', 'key_pos': ['日期|统计日期', '货品id', '四级类目名称'],
@@ -289,7 +293,7 @@ for key in keys:
     DOC_REFERENCE.pop(key)
 
 args = sys.argv.copy()
-# args = ['args', '-dzd', '-i', '10.1', '10.31']  # debug
+# args = ['args', '-dzd', '-i', '11.1', '11.30', ]  # debug
 today = datetime.date.today()
 tt = today.timetuple()
 interval = namedtuple('interval', ('head', 'tail'))
@@ -343,8 +347,9 @@ DOCS_PATH = os.path.join(desktop, DOCS_PATH)
 CODE_PATH = os.path.join(desktop, CODE_PATH)
 # 生成表格路径
 aaa = ""
+ccc = '对账单' if FS_MODE else '利润'
 if CURRENT:
     aaa = "(活动中心导出淘客数据)"
-FILE_GENERATED_PATH = os.path.join(desktop, f'猫超{head.timetuple().tm_mon}月利润核算{aaa}_PoweredByPandas.xlsx')
+FILE_GENERATED_PATH = os.path.join(desktop, f'猫超{head.timetuple().tm_mon}月{ccc}核算{aaa}_PoweredByPandas.xlsx')
 # sys.path.append(CODE_PATH)
 print('settings->tracing...')

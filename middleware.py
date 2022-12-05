@@ -24,7 +24,7 @@ from profit_calculator import fs_calculator
 data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': data_frame,
 'to_sql_df': sql_df, 'mode': self.from_sql}
 """
-
+warnings.filterwarnings('ignore')
 MiddlewareArsenal = defaultdict(lambda: lambda m: m)
 AssemblyLines = {}
 
@@ -219,6 +219,7 @@ def financial_statement(data_ins):
     val_col = list_map(data_ins['doc_ref']['val_pos'])
     df = data_ins['data_frame']
     try:
+        df.loc[:, cate_col] = np.where(df[cate_col] == '货款结算', '货款', df[cate_col])
         df.loc[:, val_col[0]] = np.where(df[val_col[0]] == '--', '0', df[val_col[0]])
         df.loc[:, val_col[1]] = np.where(df[val_col[1]] == '--', '0', df[val_col[1]])
     except:
@@ -399,6 +400,7 @@ data_ins = {'identity': self.identity, 'doc_ref': self.doc_ref, 'data_frame': da
 """
 fs_mode = st.FS_MODE
 account_mode = st.ACCOUNT_MODE
+
 
 def validate_attr(cls) -> bool:
     ready = True
@@ -756,6 +758,17 @@ class FinancialStatementAssembly:
         df_parameter = df_parameter.rename(columns=new_names)
         df = pd.merge(df, df_parameter, on=on, how='left')
         df = pd.merge(df, df_cost, on=on, how='left')
+        # -----------由于货品ID列有缺失值, merge之后的dataframe有NaN值, -------
+        # -----------必须进行填充, 否则排序等操作会导致数据丢失------------------
+        val_col = list_map(st.DOC_REFERENCE['mc_category']['val_pos'])
+        val_col.append('unit_cost')
+        fs_val_col = []
+        for elem in df.columns:
+            if elem in val_col:
+                fs_val_col.append(elem)
+        df.loc[:, fs_val_col] = df.loc[:, fs_val_col].fillna(0)
+        df = df.fillna('--')
+        # ---------------------------------------------------------------
         df = fs_calculator(df)
         df = prettier_sort(cls, df)
         return df
@@ -781,11 +794,11 @@ class FinalAssembly:
             e_sjc = edf[edf['grouping'] == '商家仓'].copy()
             i_rdc = idf[idf['grouping'] == '寄售'].copy()
             i_sjc = idf[idf['grouping'] == '商家仓'].copy()
-            dfs = {'e_rdc': e_rdc, 'e_sjc': e_sjc, 'i_rdc': i_rdc, 'i_sjc': i_sjc,}
+            dfs = {'e_rdc': e_rdc, 'e_sjc': e_sjc, 'i_rdc': i_rdc, 'i_sjc': i_sjc, }
         # -------------------------------------------
         if fs_mode:
             fs = cls.financial_statement_assembly
-            fs_sh = fs[fs['品牌名称'] == '十月结晶'].copy()
+            fs_sh = fs[(fs['品牌名称'] == '十月结晶') | (fs['品牌名称'] == '--')].copy()
             fs_ld = fs[fs['品牌名称'] == '琳达妈咪'].copy()
             dfs = {'fs_sh': fs_sh, 'fs_ld': fs_ld}
         # -------------------------------------------

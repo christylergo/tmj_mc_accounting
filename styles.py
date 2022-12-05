@@ -87,16 +87,18 @@ def add_styles(dft: tuple):
         # ----------------给对账单表格中添加公式-------------------
         if fields[enum].endswith('对账单'):
             for eee in range(8, columns_size + 1):
-                cell = chr(a_upper + eee) + '2:' + chr(a_upper + eee) + str(df.index.size+1)
+                cell = chr(a_upper) if eee >= 26 else ''
+                cell = cell + chr(a_upper + eee % 26)
+                cell_range = cell + '2:' + cell + str(df.index.size+1)
                 ws[chr(a_upper) + str(df.index.size + 2)] = '合计'
-                ws[chr(a_upper + eee) + str(df.index.size + 2)] = f'=SUM({cell})'
+                ws[cell + str(df.index.size + 2)] = f'=SUM({cell_range})'
                 font = styles.Font(
                         name='微软雅黑',
                         size=10,
                         bold=bold,
                 )
                 ws[chr(a_upper) + str(df.index.size + 2)].font = font
-                ws[chr(a_upper + eee) + str(df.index.size + 2)].font = font
+                ws[cell + str(df.index.size + 2)].font = font
             ws.row_dimensions[df.index.size + 2].height = 30
         # --------------------------------------------------------
     # ------------------------------------

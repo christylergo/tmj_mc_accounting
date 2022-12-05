@@ -149,11 +149,13 @@ class DocumentIO:
         doc_df = pd.DataFrame()
         doc_cols = self.doc_ref['key_pos'].copy()  # 直接引用后使用extend方法导致一系列问题,需要使用copy方法
         doc_cols.extend(self.doc_ref['val_pos'])
-        pd_cols = list(map(lambda i: i.split('|')[-1], doc_cols))
-        sqlite_cols = list(map(lambda i: i.split('|')[0], doc_cols))
+        pd_cols = flatten_map(doc_cols)
+        # sqlite_cols = list_map(doc_cols)
         for file in self.file:  # file是实例属性,将要读取的文件信息,也是列表,因为同一性质文件可能有多个
             matched_csv = re.match(r'^.*\.csv$', file)
             matched_excel = re.match(r'^.*\.xlsx?$', file)
+            # if self.identity == 'financial_statement':  # debug
+            #     breakpoint()
             if matched_csv:
                 # xlsx转换成csv编码格式是gb2312, 读取时需要特别指定, pandas默认的是utf-8
                 try:
@@ -162,6 +164,10 @@ class DocumentIO:
                 except:
                     encoding = 'gbk'
                     one_df = pd.read_csv(file, usecols=lambda col: col in pd_cols, encoding=encoding)
+                # if self.identity == 'financial_statement':  # debug
+                #     breakpoint()
+                one_df = one_df.dropna(how='all', axis=0)  # 剔除空行
+                one_df = one_df.rename(columns=dict_map(doc_cols, one_df.columns.to_list()))
                 doc_df = pd.concat([doc_df, one_df], ignore_index=True, axis=0)
             if matched_excel:
                 # 在旧版本的pandas中, 默认引擎是openpyxl,使用xlrd比openpyxl速度更快,但是必须是新版,pip install xlrd==1.2.0
@@ -177,9 +183,11 @@ class DocumentIO:
                         one_df = pd.concat(df_li, ignore_index=True, axis=0)
                     else:
                         one_df = pd.read_excel(xl, usecols=lambda col: col in pd_cols, dtype=d_type)
+                # if self.identity == 'financial_statement':  # debug
+                #     breakpoint()
+                one_df = one_df.dropna(how='all', axis=0)  # 剔除空行
+                one_df = one_df.rename(columns=dict_map(doc_cols, one_df.columns.to_list()))
                 doc_df = pd.concat([doc_df, one_df], ignore_index=True, axis=0)
-        doc_df = doc_df.dropna(how='all', axis=0)  # 剔除空行
-        doc_df = doc_df.rename(columns=dict(zip(pd_cols, sqlite_cols)))
         row_count = doc_df.index.size
         index = pd.MultiIndex.from_product([['doc_df'], range(row_count)], names=['source', 'serial_nu'])
         doc_df.index = index
@@ -265,7 +273,7 @@ class DocumentIO:
                 if to_sql['mode'] == 'merge':
                     # 需要特别留意DataFrame.to_sql()的参数,必须明确这些参数
                     to_sql['to_sql_df'].to_sql(
-                        to_sql['identity'], conn, if_exists='append', index=False, chunksize=1000)
+                        to_sql['identity'], conn, if_exists='append', index=False, chunksize=5000)
                     # print(to_sql['to_sql_df'].head())
                 else:
                     sql_query = f"DELETE FROM {to_sql['identity']};"
@@ -290,6 +298,24 @@ class DocumentIO:
         conn.commit()
         cursor.close()
         conn.close()
+
+
+# 针对列名的多样化问题的优化
+def flatten_map(col: list) -> list:
+    mapped_list = []
+    # map返回的iterator只有在迭代操作的时候才会执行内部函数, 所以必须加上list操作, 务必留意
+    list(map(lambda i: mapped_list.extend(i.split('|')), col))
+    return mapped_list
+
+
+def dict_map(col: list, df_col: list) -> dict:
+    mapped_dict = {}
+    for elem in col:
+        if len((aa := elem.split('|'))) > 1:
+            for sub_elem in aa[1:]:
+                if sub_elem in df_col:
+                    mapped_dict[sub_elem] = aa[0]
+    return mapped_dict
 
 
 # ----------------------------------分隔线, 之后是功能函数---------------------------------------

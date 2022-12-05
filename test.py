@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
-a = False
-b = not a
-class AAA:
-    if a:
-        aa = 1
-    if b:
-        bb = 100
-    def eee(self):
-        print('haha')
+
+columns = ['商品ID|商品编码', '货品ID|货品编码|后端商品编码', '含税金额', 'skuID', '计费数量|商品数量']
 
 
-print(hasattr(AAA, 'aa'))
-print(hasattr(AAA, 'bb'))
+def flatten_map(col: list):
+    mapped_list = []
+    list(map(lambda i: mapped_list.extend(i.split('|')), col))
+    return mapped_list
+
+
+aaa = flatten_map(columns)
