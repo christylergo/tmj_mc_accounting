@@ -35,7 +35,7 @@ for create_table in sql_create_table:
     cur.execute(create_table)
 
 # 手工处理的query写在此处
-# cur.execute('drop table mao_chao_ka;')
+# cur.execute('drop table mc_item;')
 # cur = cur.execute("select * from tian_ji_sales;")
 # for i in cur:
 #     print(i)

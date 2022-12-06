@@ -214,6 +214,11 @@ DOC_REFERENCE = {
         'key_pos': ['货品id|货品编码', '商家编码|条码', '商品id|商品编码', 'skuid|sku编码', '商品名称', '自营类目id', ],
         'val_pos': ['所属店铺', '自营类目名称', '品牌名称', '建档供应商名称'], 'val_type': ['TEXT', 'TEXT', 'TEXT', 'TEXT', ],
     },
+    'item_exception': {
+        'key_words': '商品列表异常填充',
+        'key_pos': ['货品id|货品编码', '商家编码|条码', '商品id|商品编码', 'skuid|sku编码', '商品名称', '自营类目id', ],
+        'val_pos': ['所属店铺', '自营类目名称', '品牌名称', '建档供应商名称'], 'val_type': ['TEXT', 'TEXT', 'TEXT', 'TEXT', ],
+    },
     'mc_base_info': {
         'key_words': '猫超商品信息表', 'key_pos': [r'货品id|货品ID(后端)', '商家编码|旺店通条码', ],
         'val_pos': ['入库名称', '供货价_base_info|供货价', ], 'val_type': ['TEXT', 'REAL', ],
@@ -240,17 +245,17 @@ DOC_REFERENCE = {
         'val_pos': ['计费数量|商品数量', '含税金额', ], 'val_type': ['REAL', 'REAL', ], 'required': FS_MODE,  # 'row_criteria': {'费用类型': '货款'},
     },
     'daily_sales': {
-        'key_words': '销售日报', 'key_pos': ['日期|统计日期', '货品id', '四级类目名称'],
+        'key_words': '销售日报', 'key_pos': ['日期|统计日期', '货品id', '四级类目名称', '商品id', 'skuid|SKUID'],  # 销售日报中有货品ID缺失的情况, 必须额外添加识别信息
         'val_pos': ['sales_volume|净销售数量', r'sales|订单实付（退款后）', ], 'required': ACCOUNT_MODE,
         'val_type': ['REAL', 'REAL', ], 'mode': 'merge', 'pre_func': ['normalize_date_col', ],
     },
-    'tian_ji_sales': {
-        'key_words': r'天机.*商品信息|商品信息.*天机', 'key_pos': ['日期', '商品id', 'skuid|SKU_ID', ],
-        'val_pos': ['sales_volume|支付件数', 'sales|支付金额', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
-        'pre_func': ['normalize_date_col', 'mc_time_series', ], 'required': ACCOUNT_MODE,
-    },
+    # 'tian_ji_sales': {
+    #     'key_words': r'天机.*商品信息|商品信息.*天机', 'key_pos': ['日期', '商品id', 'skuid|SKU_ID', ],
+    #     'val_pos': ['sales_volume|支付件数', 'sales|支付金额', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
+    #     'pre_func': ['normalize_date_col', 'mc_time_series', ], 'required': ACCOUNT_MODE,
+    # },
     'mao_chao_ka': {
-        'key_words': '猫超买返卡|猫超卡', 'key_pos': ['日期|业务时间', '商品id', ],
+        'key_words': r'^((?!福袋).)+猫超卡', 'key_pos': ['日期|业务时间', '商品id', ],
         'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'], 'required': ACCOUNT_MODE,
     },
@@ -264,18 +269,18 @@ DOC_REFERENCE = {
         'val_pos': ['供应商承担补差金额', ], 'val_type': ['REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ], 'required': ACCOUNT_MODE,
     },
-    'tao_ke_raw': {
-        'key_words': r'淘客.*\\(?=export)[^\\]*$', 'key_pos': ['日期|数据时间', '商品id', ],
-        'val_pos': ['结算佣金', '付款服务费', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
-        'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ], 'required': ACCOUNT_MODE,
-    },
+    # 'tao_ke_raw': {
+    #     'key_words': r'淘客.*\\(?=export)[^\\]*$', 'key_pos': ['日期|数据时间', '商品id', ],
+    #     'val_pos': ['结算佣金', '付款服务费', ], 'val_type': ['REAL', 'REAL', ], 'mode': 'merge',
+    #     'pre_func': ['mc_time_series', 'ambiguity_to_explicitness', ], 'required': ACCOUNT_MODE,
+    # },
     'wan_xiang_tai': {
-        'key_words': '万向台|货品加速', 'key_pos': ['日期', '商品id|宝贝Id', ],
-        'val_pos': ['消耗', ], 'val_type': ['REAL', ], 'mode': 'merge',
+        'key_words': '万向台', 'key_pos': ['日期', '商品id|宝贝Id|主体id', ],
+        'val_pos': ['消耗|花费', ], 'val_type': ['REAL', ], 'mode': 'merge', 'sheet_criteria': '报表数据',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'],  'required': ACCOUNT_MODE,
     },
     'yin_li_mo_fang': {
-        'key_words': r'引力魔方|报表数据_15天归因\d+\.xlsx?$', 'key_pos': ['日期', '商品id', ],
+        'key_words': '引力魔方', 'key_pos': ['日期', '商品id', ],
         'val_pos': ['花费', ], 'val_type': ['REAL', ], 'mode': 'merge',
         'pre_func': ['mc_time_series', 'ambiguity_to_explicitness'], 'required': ACCOUNT_MODE,
     },

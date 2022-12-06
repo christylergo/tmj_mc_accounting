@@ -10,3 +10,8 @@ def flatten_map(col: list):
 
 
 aaa = flatten_map(columns)
+
+
+ccc = None
+
+print(not ccc)

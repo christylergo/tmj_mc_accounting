@@ -164,7 +164,7 @@ class DocumentIO:
                 except:
                     encoding = 'gbk'
                     one_df = pd.read_csv(file, usecols=lambda col: col in pd_cols, encoding=encoding)
-                # if self.identity == 'financial_statement':  # debug
+                # if self.identity == 'wan_xiang_tai':  # debug
                 #     breakpoint()
                 one_df = one_df.dropna(how='all', axis=0)  # 剔除空行
                 one_df = one_df.rename(columns=dict_map(doc_cols, one_df.columns.to_list()))
@@ -183,7 +183,7 @@ class DocumentIO:
                         one_df = pd.concat(df_li, ignore_index=True, axis=0)
                     else:
                         one_df = pd.read_excel(xl, usecols=lambda col: col in pd_cols, dtype=d_type)
-                # if self.identity == 'financial_statement':  # debug
+                # if self.identity == 'wan_xiang_tai':  # debug
                 #     breakpoint()
                 one_df = one_df.dropna(how='all', axis=0)  # 剔除空行
                 one_df = one_df.rename(columns=dict_map(doc_cols, one_df.columns.to_list()))

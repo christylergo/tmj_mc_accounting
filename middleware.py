@@ -89,8 +89,8 @@ def convert_data_type(data_ins):
     key_pos = [col for col in key_pos if col in df.columns]
     # pandas的text数据方法只能用于series
     for col in key_pos:
-        df.loc[:, col] = df.loc[:, col].astype('string')
-        df.loc[:, col] = df.loc[:, col].str.replace(r"\.0+$|^=\"|\"$|^'", '', regex=True)
+        df[col] = df[col].astype('string')
+        df[col] = df[col].str.replace(r"\.0+$|^=\"|\"$|^'", '', regex=True)
 
 
 def rectify_time_series(data_ins, interval):
@@ -176,20 +176,24 @@ def mc_time_series(data_ins) -> None:
 @assembly(MiddlewareArsenal)
 def daily_sales(data_ins):
     interval = st.MC_SALES_INTERVAL
+    df = data_ins['data_frame']
+    col = list_map(st.DOC_REFERENCE['daily_sales']['key_pos'])
+    # 销售日报中有货品ID缺失的情况, 必须进行特殊处理
+    df.loc[:, col[1]] = np.where(df[col[1]].isna(), df[col[3]].str.cat(df[col[4]], sep='#'), df[col[1]])
+    data_ins['data_frame'] = df
     df, data_ins['to_sql_df'] = rectify_time_series(data_ins, interval)
-    col = data_ins['doc_ref']['key_pos'][1].split('|')[0]
-    cate = data_ins['doc_ref']['key_pos'][2].split('|')[0]
-    del data_ins['doc_ref']['key_pos'][2]
-    cate_col = [col, cate]
+    data_ins['doc_ref']['key_pos'] = data_ins['doc_ref']['key_pos'] .copy()[:2]
+    cate = col[2]
+    cate_col = [col[1], cate]
     columns = df.columns.to_list()
     columns.remove(cate)
-    cate_df = df.reindex(columns=cate_col).drop_duplicates(subset=col).copy()
+    cate_df = df.reindex(columns=cate_col).drop_duplicates(subset=col[1]).copy()
     df = df.reindex(columns=columns)
     data_ins['data_frame'] = df
     # --------------------------------
     df = pivot_time_series(data_ins)
     # --------------------------------
-    df = pd.merge(df, cate_df, on=col, how='left')
+    df = pd.merge(df, cate_df, on=col[1], how='left')
     data_ins['data_frame'] = df
 
 
@@ -268,9 +272,11 @@ def mc_category(data_ins):
 @assembly(MiddlewareArsenal)
 def mc_item(data_ins):
     col = data_ins['doc_ref']['val_pos'][-1].split('|')[0]
+    if data_ins['to_sql_df'] is not None:
+        data_ins['to_sql_df'] = data_ins['to_sql_df'].dropna(how='any', axis=0)
     df = data_ins['data_frame']
-    df.dropna(inplace=True)
     df = df.copy()
+    df = df.dropna(how='any', axis=0)
     df['grouping'] = df[col].str.split('-').str[1]
     # 排序之后主店排在前面, 之后drop duplicates指明keep=‘first’, 就可以优先保留主店信息
     df = df.sort_values(by='所属店铺', axis=0, kind='mergesort',
@@ -550,24 +556,31 @@ class ElementWiseSales:
     匹配每个商品sku的毛保/类目/扣点/供价等parameter
     """
     daily_sales = None
-    tian_ji_sales = None
+    # tian_ji_sales = None
     mc_item = None
+    item_exception = None
     required = account_mode
 
     @classmethod
     def assemble(cls) -> pd.DataFrame:
-        if st.DAILY_SALES:
-            mc_sales = cls.daily_sales
-            cls.tian_ji_sales = mc_sales
-            s_on = mc_sales['doc_ref']['key_pos'][1]
-        else:
-            mc_sales = cls.tian_ji_sales
-            cls.daily_sales = mc_sales
-            s_on = list_map(mc_sales['doc_ref']['key_pos'][1:])
-        validate_attr(cls)  # 销售数据二选一, 所以attr可能是empty, 必须调整后再进行验证
-        sales = mc_sales['data_frame']
+        validate_attr(cls)
+        col = list_map(st.DOC_REFERENCE['mc_item']['key_pos'])
+        s_on = col[0]
+        sales = cls.daily_sales['data_frame']
         item = cls.mc_item['data_frame']
-        val = list_map(mc_sales['doc_ref']['val_pos'])
+        item_exception = cls.item_exception['data_frame']
+        # -------------------------------------
+        temp_i = pd.concat([item, item_exception])
+        temp_i = temp_i.assign(keys=temp_i[col[2]].str.cat(temp_i[col[3]], sep='#'))
+        criteria = sales[s_on].str.contains('#')
+        temp_s = pd.merge(sales[criteria], temp_i, left_on=s_on, right_on='keys', how='left')
+        temp_s[(s_on+'_x')] = temp_s[(s_on+'_y')]
+        temp_s = temp_s.rename(columns={(s_on+'_x'): s_on})
+        temp_s = temp_s.reindex(columns=sales.columns)
+        criteria = ~criteria
+        sales = pd.concat([sales[criteria], temp_s])
+        # -------------------------------------
+        val = list_map(st.DOC_REFERENCE['daily_sales']['val_pos'])
         sales = sales[sales[val[0]] != 0]
         item = item.drop_duplicates(subset=s_on, keep='first')
         df = pd.merge(item, sales, on=s_on, how='right')
@@ -582,7 +595,7 @@ class ItemWisePromotionFee:
     mao_chao_ka = None
     fu_dai = None
     tao_ke = None
-    tao_ke_raw = None
+    # tao_ke_raw = None
     wan_xiang_tai = None
     yin_li_mo_fang = None
     zhi_tong_che = None
@@ -605,10 +618,10 @@ class ItemWisePromotionFee:
         df = df.fillna(value=0)
         accumulated_fee.insert(0, i_on)
         # 选择淘客数据来源
-        if st.CURRENT:
-            accumulated_fee.remove('tao_ke')
-        else:
-            accumulated_fee.remove('tao_ke_raw')
+        # if st.CURRENT:
+            # accumulated_fee.remove('tao_ke')
+        # else:
+            # accumulated_fee.remove('tao_ke_raw')
         # ----------------------
         df = df.reindex(columns=accumulated_fee)
         accumulated_fee.remove(i_on)
